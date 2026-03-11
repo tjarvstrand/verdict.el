@@ -139,7 +139,6 @@ nil   — prompt before each run, then offer to remember the answer."
                  ('skipped verdict-icon-skipped)
                  ('stopped verdict-icon-stopped)
                  (_        " "))))
-    (message "leaf-icon %s -> %s" status icon)
     (verdict--render-icon status icon)))
 
 (defun verdict--group-icon (status open)
@@ -206,7 +205,9 @@ Injects a synthetic *output* child for any suite or group with :output."
   :closed-icon (if (plist-get item :children)
                    (verdict--group-icon (plist-get item :status) nil)
                  (verdict--leaf-icon (plist-get item :status)))
-  :open-icon   (verdict--group-icon (plist-get item :status) t)
+  :open-icon   (if (plist-get item :children)
+                   (verdict--group-icon (plist-get item :status) t)
+                 (verdict--leaf-icon (plist-get item :status)))
   :label       (plist-get item :label)
   :key         (plist-get item :id)
   :children    (plist-get item :children)
@@ -514,7 +515,7 @@ EVENT must have a :type field with a keyword value."
     (:log
      (let* ((test-id  (plist-get event :test-id))
             (severity (plist-get event :severity))
-            (msg      (verdict-render-message severity (plist-get event :message)))
+            (msg      (verdict--render-message severity (plist-get event :message)))
             (test-path (gethash test-id verdict--paths)))
        (when (and test-path msg)
          (setq verdict--nodes
