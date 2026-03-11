@@ -138,6 +138,7 @@ nil   — prompt before each run, then offer to remember the answer."
                  ('skipped verdict-icon-skipped)
                  ('stopped verdict-icon-stopped)
                  (_        " "))))
+    (message "leaf-icon %s -> %s" status icon)
     (verdict--render-icon status icon)))
 
 (defun verdict--group-icon (status open)
@@ -150,6 +151,12 @@ nil   — prompt before each run, then offer to remember the answer."
     (concat
      (propertize icon-char 'face `(:inherit ,face) 'display `(height ,verdict-icon-height))
      (propertize " "  'face `(:inherit ,face)))))
+
+(defun verdict--render-message (severity message)
+  "Return propertized group icon string for ICON-CHAR."
+  (if (eq severity 'error)
+      (propertize message 'face 'verdict-error-face)
+    message))
 
 ;;; Alist-Tree → List-Tree Conversion
 
@@ -237,7 +244,7 @@ Injects a synthetic *output* child for any suite or group with :output."
 
 (defun verdict--visit (&optional _arg)
   "Navigate to test file/line for node at point.
-If the node has print output or an error message, display it in *verdict-output* first."
+If the node has log output or an error message, display it in *verdict-output* first."
   (interactive "P")
   (let* ((btn    (treemacs-node-at-point))
          (item   (treemacs-button-get btn :item))
@@ -466,8 +473,6 @@ EVENT must have a :type field with a keyword value."
              (verdict--update-at-path verdict--nodes (list id) (lambda (_) node)))
        (puthash id (list id) verdict--paths)))
 
-    (:file-count nil)
-
     (:group
      (let* ((id        (plist-get event :id))
             (parent-id (plist-get event :parent-id))
@@ -510,9 +515,10 @@ EVENT must have a :type field with a keyword value."
                  (verdict--update-at-path verdict--nodes test-path (lambda (_) node)))
            (puthash id test-path verdict--paths)))))
 
-    (:print
+    (:log
      (let* ((test-id  (plist-get event :test-id))
-            (msg      (plist-get event :message))
+            (severity (plist-get event :severity))
+            (msg      (verdict-render-message severity (plist-get event :message)))
             (test-path (gethash test-id verdict--paths)))
        (when (and test-path msg)
          (setq verdict--nodes
@@ -529,51 +535,22 @@ EVENT must have a :type field with a keyword value."
                                             (lambda (prev)
                                               (if prev (concat prev "\n" msg) msg)))))))))
 
-    (:error
-     (let* ((test-id     (plist-get event :test-id))
-            (error-str   (plist-get event :error))
-            (stack-trace (plist-get event :stack-trace))
-            (full-str    (if (and (stringp stack-trace) (not (string-empty-p stack-trace)))
-                             (concat error-str "\n" stack-trace)
-                           error-str))
-            (styled      (propertize full-str 'face 'verdict-error-face))
-            (test-path   (gethash test-id verdict--paths)))
-       (when test-path
-         (setq verdict--nodes
-               (verdict--update-at-path verdict--nodes
-                                        (append test-path (list :output))
-                                        (lambda (prev)
-                                          (if prev (concat prev "\n" styled) styled)))))
-       (unless test-path
-         (when-let ((file-id (gethash test-id verdict--loading-tests)))
-           (setq verdict--nodes
-                 (verdict--update-at-path verdict--nodes
-                                          (list file-id :output)
-                                          (lambda (prev)
-                                            (if prev (concat prev "\n" styled) styled))))))))
-
     (:test-done
      (let* ((test-id   (plist-get event :test-id))
             (result    (plist-get event :result))
-            (skipped   (plist-get event :skipped))
             (test-path (gethash test-id verdict--paths)))
-       (let ((status (cond
-                       (skipped              'skipped)
-                       ((eq result :success) 'passed)
-                       ((eq result :failure) 'failed)
-                       (t                    'error))))
          (when test-path
            (setq verdict--nodes
                  (verdict--update-at-path verdict--nodes
                                           (append test-path (list :status))
-                                          (lambda (_) status))))
+                                          (lambda (_) result))))
          (unless test-path
            (when-let ((file-id (gethash test-id verdict--loading-tests)))
-             (unless (eq result :success)
+             (unless (eq result 'success)
                (setq verdict--nodes
                      (verdict--update-at-path verdict--nodes
                                               (list file-id :status)
-                                              (lambda (_) 'error)))))))))
+                                              (lambda (_) 'error))))))))
 
     (:done
      (message "verdict: test run complete")))

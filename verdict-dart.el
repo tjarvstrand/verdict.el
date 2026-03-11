@@ -186,31 +186,28 @@ FILE is the test file associated with this process, used for error attribution."
                                     :url       (gethash "url" test)))))
 
             ("print"
-             (verdict-event (list :type         :print
+             (verdict-event (list :type         :log
+                                  :severity     'info
                                   :test-id      (gethash "testID" ev)
-                                  :message-type (if (string= (gethash "messageType" ev) "skip")
-                                                    :skip
-                                                  :print)
                                   :message      (gethash "message" ev))))
 
             ("error"
-             (verdict-event (list :type        :error
+             (verdict-event (list :type        :log
+                                  :severity    'error
                                   :test-id     (gethash "testID" ev)
-                                  :error       (gethash "error" ev)
-                                  :stack-trace (gethash "stackTrace" ev)
-                                  :is-failure  (gethash "isFailure" ev))))
+                                  :message     (concat (gethash "error" ev) "\n" (gethash "stackTrace" ev)))))
 
             ("testDone"
-             (let* ((result    (gethash "result" ev))
-                    (result-kw (pcase result
-                                 ("success" :success)
-                                 ("failure" :failure)
-                                 (_         :error))))
+             (let* ((result (if (eq (gethash "skipped" ev) t)
+                                'skipped
+                              (pcase (gethash "result" ev)
+                                ("success" 'passed)
+                                ("failure" 'failed)
+                                (_         'error))
+                              )))
                (verdict-event (list :type    :test-done
                                     :test-id (gethash "testID" ev)
-                                    :result  result-kw
-                                    :hidden  (eq (gethash "hidden" ev) t)
-                                    :skipped (eq (gethash "skipped" ev) t)))))
+                                    :result  result))))
 
             ("done"
              (verdict-event (list :type    :done
