@@ -434,7 +434,7 @@ TYPE is one of :project :file :group :test. NAME is a string or nil."
   (verdict--maybe-save-buffer)
   (verdict-reset)
   (verdict--spinner-start)
-  (display-buffer (verdict--render)))
+  (display-buffer (verdict--render) '(nil (inhibit-same-window . t))))
 
 (defun verdict-stop ()
   "Mark all running nodes as stopped and render."
