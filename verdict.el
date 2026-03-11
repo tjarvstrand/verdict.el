@@ -10,6 +10,8 @@
 ;; TODO
 ;; - Simplify code
 ;; - Tests
+;; - Figure out actions for click, RET, etc.
+;; - Inhibit same window then displaying buffer for the first time
 
 ;;; Faces
 
@@ -189,7 +191,7 @@ Injects a synthetic *output* child for any suite or group with :output."
             (plist-put copy :children child-list)
             (plist-put copy :status agg-status)
             copy))
-         ((and output (plist-get node :container))
+         ((and output (plist-member node :children))
           ;; No real children but has output (e.g. compilation failure): inject output child,
           ;; keep explicit status rather than aggregating.
           (let ((copy (copy-sequence node)))
@@ -393,7 +395,6 @@ Creates a minimal file node if none exists yet. Schedules a render."
                                         :label     (file-name-nondirectory file-path)
                                         :file      file-path
                                         :status    nil
-                                        :container t
                                         :children  nil)))
                         (setq verdict--nodes
                               (verdict--update-at-path verdict--nodes (list file-path)
@@ -466,7 +467,6 @@ EVENT must have a :type field with a keyword value."
                         :label     (file-name-nondirectory path)
                         :file      path
                         :status    nil
-                        :container t
                         :children  nil)))
        (setq verdict--nodes
              (verdict--update-at-path verdict--nodes (list id) (lambda (_) node)))
@@ -486,7 +486,6 @@ EVENT must have a :type field with a keyword value."
                                    :label     name
                                    :status    nil
                                    :line      line-num
-                                   :container t
                                    :children  nil)))
            (setq verdict--nodes
                  (verdict--update-at-path verdict--nodes group-path (lambda (_) node)))
