@@ -23,9 +23,9 @@
 
            ;; broken_test.dart fails immediately — file node goes straight to error
            (0.0  . (:type :test-start :id 400 :file-id 4 :group-ids [] :name "loading /my/project/test/broken_test.dart" :line nil :url nil))
-           (1.0  . (:type :log :test-id 400 :severity error
+           (1.0  . (:type :log :id 400 :severity error
                           :message "Error: Compilation failed.\ntest/broken_test.dart:5:3: Error: Undefined name 'undefinedVar'.\n  undefinedVar;\n  ^^^^^^^^^^^"))
-           (1.0  . (:type :test-done  :test-id 400 :result error :hidden nil :skipped nil))
+           (1.0  . (:type :test-done  :id 400 :result error :hidden nil :skipped nil))
 
            ;; Phase 2: groups appear one by one — group nodes spin waiting for tests
            (1.5  . (:type :group :id 10 :file-id 1 :parent-id 0 :name "AuthService" :test-count 3 :line 5 :url nil))
@@ -45,21 +45,21 @@
            (3.0  . (:type :test-start :id 302 :file-id 3 :group-ids [30] :name "LoginWidget animation completes"     :line 30 :url nil))
 
            ;; Phase 4: print output and completions, staggered
-           (3.5  . (:type :print    :test-id 100 :message-type :print :message "Sending POST /auth/login"))
-           (4.0  . (:type :print    :test-id 100 :message-type :print :message "Response: 200 OK, token received"))
-           (4.5  . (:type :test-done :test-id 100 :result passed :hidden nil :skipped nil))
-           (5.0  . (:type :print    :test-id 200 :message-type :print :message "Cart was empty, adding first item"))
-           (5.5  . (:type :test-done :test-id 300 :result passed :hidden nil :skipped nil))
-           (6.0  . (:type :test-done :test-id 200 :result passed :hidden nil :skipped nil))
-           (6.5  . (:type :print    :test-id 102 :message-type :print :message "Logout called, clearing token"))
-           (7.0  . (:type :test-done :test-id 102 :result passed :hidden nil :skipped nil))
-           (7.5  . (:type :test-done :test-id 101 :result passed :hidden nil :skipped nil))
-           (8.0  . (:type :test-done :test-id 201 :result passed :hidden nil :skipped nil))
-           (8.5  . (:type :test-done :test-id 202 :result passed :hidden t   :skipped t))
-           (8.5  . (:type :print    :test-id 301 :message-type :print :message "Submitting form with empty fields"))
-           (9.0  . (:type :log :test-id 301 :severity error
+           (3.5  . (:type :log :severity info :id 100 :message "Sending POST /auth/login"))
+           (4.0  . (:type :log :severity info :id 100 :message "Response: 200 OK, token received"))
+           (4.5  . (:type :test-done :id 100 :result passed :hidden nil :skipped nil))
+           (5.0  . (:type :log :severity info :id 200 :message "Cart was empty, adding first item"))
+           (5.5  . (:type :test-done :id 300 :result passed :hidden nil :skipped nil))
+           (6.0  . (:type :test-done :id 200 :result passed :hidden nil :skipped nil))
+           (6.5  . (:type :log :severity info :id 102 :message "Logout called, clearing token"))
+           (7.0  . (:type :test-done :id 102 :result passed :hidden nil :skipped nil))
+           (7.5  . (:type :test-done :id 101 :result passed :hidden nil :skipped nil))
+           (8.0  . (:type :test-done :id 201 :result passed :hidden nil :skipped nil))
+           (8.5  . (:type :test-done :id 202 :result passed :hidden t   :skipped t))
+           (8.5  . (:type :log :severity info :id 301 :message "Submitting form with empty fields"))
+           (9.0  . (:type :log :id 301 :severity error
                           :message "Expected: <true>\n  Actual: <false>\npackage:test  expect\ntest/widget_test.dart 22:5  main.<fn>.<fn>"))
-           (9.0  . (:type :test-done :test-id 301 :result failed :hidden nil :skipped nil))
+           (9.0  . (:type :test-done :id 301 :result failed :hidden nil :skipped nil))
 
            ;; 302 is still running when the process finishes
            (9.5  . (:type :done :success nil)))))

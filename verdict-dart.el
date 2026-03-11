@@ -29,6 +29,9 @@
 (defvar verdict-dart--group-names (make-hash-table)
   "Map of dart group ID (integer) → full name string.")
 
+(defvar verdict-dart--file-suite-ids (make-hash-table :test #'equal)
+  "Map of file path → suite ID for the current run.")
+
 ;;; Dart String Literal Parsing
 
 (defconst verdict-dart--string-prefixes
@@ -166,10 +169,12 @@ FILE is the test file associated with this process, used for error attribution."
             ("start" nil)
 
             ("suite"
-             (let* ((suite (gethash "suite" ev))
-                    (path  (gethash "path" suite)))
+             (let* ((suite    (gethash "suite" ev))
+                    (suite-id (gethash "id" suite))
+                    (path     (gethash "path" suite)))
+               (puthash path suite-id verdict-dart--file-suite-ids)
                (verdict-event (list :type      :group
-                                    :id        (gethash "id" suite)
+                                    :id        suite-id
                                     :name      (file-name-nondirectory path)
                                     :file      path))))
 
@@ -219,13 +224,13 @@ FILE is the test file associated with this process, used for error attribution."
             ("print"
              (verdict-event (list :type         :log
                                   :severity     'info
-                                  :test-id      (gethash "testID" ev)
+                                  :id           (gethash "testID" ev)
                                   :message      (gethash "message" ev))))
 
             ("error"
              (verdict-event (list :type        :log
                                   :severity    'error
-                                  :test-id     (gethash "testID" ev)
+                                  :id          (gethash "testID" ev)
                                   :message     (concat (gethash "error" ev) "\n" (gethash "stackTrace" ev)))))
 
             ("testDone"
@@ -237,7 +242,7 @@ FILE is the test file associated with this process, used for error attribution."
                                 (_         'error))
                               )))
                (verdict-event (list :type    :test-done
-                                    :test-id (gethash "testID" ev)
+                                    :id      (gethash "testID" ev)
                                     :result  result))))
 
             ("done"
@@ -246,9 +251,13 @@ FILE is the test file associated with this process, used for error attribution."
 
             (_ nil))))
     (error
-     (if file
-         (verdict-file-message file line)
-       (message "verdict-dart: error parsing line: %s\n%s" line (error-message-string err))))))
+     (let ((suite-id (and file (gethash file verdict-dart--file-suite-ids))))
+       (if suite-id
+           (verdict-event (list :type     :log
+                                :severity 'error
+                                :id       suite-id
+                                :message  line))
+         (message "verdict-dart: error parsing line: %s\n%s" line (error-message-string err)))))))
 
 ;;; Process Infrastructure
 
@@ -283,7 +292,8 @@ FILE is the test file associated with this process, used for error attribution."
   (when (process-live-p verdict-dart--proc)
     (kill-process verdict-dart--proc))
   (setq verdict-dart--partial ""
-        verdict-dart--group-names (make-hash-table))
+        verdict-dart--group-names (make-hash-table)
+        verdict-dart--file-suite-ids (make-hash-table :test #'equal))
   (verdict-start scope name)
   (let* ((project-root (verdict-dart--project-root))
          (cmd          (verdict-dart--command scope file name project-root debug))

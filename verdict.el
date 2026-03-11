@@ -381,33 +381,6 @@ FN returning nil deletes an alist entry."
     (setq verdict--render-timer nil))
   (setq verdict-model nil))
 
-(defun verdict-file-message (file-path message)
-  "Append MESSAGE (styled as an error) to the file node for FILE-PATH.
-Creates a minimal file node if none exists yet. Schedules a render."
-  (let* ((styled  (propertize message 'face 'verdict-error-face))
-         (file-id (catch 'found
-                    (dolist (pair verdict--nodes)
-                      (when (equal (plist-get (cdr pair) :file) file-path)
-                        (throw 'found (car pair))))))
-         (file-id (or file-id
-                      (let ((node (list :id        file-path
-                                        :label     (file-name-nondirectory file-path)
-                                        :file      file-path
-                                        :status    nil
-                                        :children  nil)))
-                        (setq verdict--nodes
-                              (verdict--update-at-path verdict--nodes (list file-path)
-                                                       (lambda (_) node)))
-                        (puthash file-path (list file-path) verdict--paths)
-                        file-path))))
-    (setq verdict--nodes
-          (verdict--update-at-path verdict--nodes (list file-id :output)
-                                   (lambda (prev)
-                                     (if prev (concat prev "\n" styled) styled))))
-    (setq verdict--nodes
-          (verdict--update-at-path verdict--nodes (list file-id :status)
-                                   (lambda (_) 'error)))
-    (verdict--schedule-render)))
 
 (defun verdict--maybe-save-buffer ()
   "Save the current buffer before a run, respecting `verdict-save-before-run'."
@@ -504,36 +477,32 @@ EVENT must have a :type field with a keyword value."
            (puthash id test-path verdict--paths)))))
 
     (:log
-     (let* ((test-id  (plist-get event :test-id))
+     (let* ((id       (plist-get event :id))
             (severity (plist-get event :severity))
             (msg      (verdict--render-message severity (plist-get event :message)))
-            (test-path (gethash test-id verdict--paths)))
-       (when (and test-path msg)
-         (setq verdict--nodes
-               (verdict--update-at-path verdict--nodes
-                                        (append test-path (list :output))
-                                        (lambda (prev)
-                                          (if prev (concat prev "\n" msg) msg)))))
-       (unless test-path
-         (when-let ((file-id (gethash test-id verdict--loading-tests)))
-           (when msg
+            (path     (gethash id verdict--paths)))
+       (when msg
+         (let ((output-path (if path
+                                (append path (list :output))
+                              (when-let ((file-id (gethash id verdict--loading-tests)))
+                                (list file-id :output)))))
+           (when output-path
              (setq verdict--nodes
-                   (verdict--update-at-path verdict--nodes
-                                            (list file-id :output)
+                   (verdict--update-at-path verdict--nodes output-path
                                             (lambda (prev)
                                               (if prev (concat prev "\n" msg) msg)))))))))
 
     (:test-done
-     (let* ((test-id   (plist-get event :test-id))
+     (let* ((id        (plist-get event :id))
             (result    (plist-get event :result))
-            (test-path (gethash test-id verdict--paths)))
+            (test-path (gethash id verdict--paths)))
          (when test-path
            (setq verdict--nodes
                  (verdict--update-at-path verdict--nodes
                                           (append test-path (list :status))
                                           (lambda (_) result))))
          (unless test-path
-           (when-let ((file-id (gethash test-id verdict--loading-tests)))
+           (when-let ((file-id (gethash id verdict--loading-tests)))
              (unless (eq result 'success)
                (setq verdict--nodes
                      (verdict--update-at-path verdict--nodes
