@@ -32,6 +32,9 @@
 (defvar verdict-dart--file-suite-ids (make-hash-table :test #'equal)
   "Map of file path → suite ID for the current run.")
 
+(defvar verdict-dart--loading-tests (make-hash-table :test #'equal)
+  "Map of loading-test ID → suite ID.")
+
 ;;; Dart String Literal Parsing
 
 (defconst verdict-dart--string-prefixes
@@ -156,6 +159,15 @@ Returns (:kind KIND :name NAME :line LINE) or nil."
         (substring name (length prefix))
       name)))
 
+(defun verdict-dart--resolve-test-id (test-id)
+  "Return TEST-ID, or the suite ID if TEST-ID is a loading test."
+  (or (gethash test-id verdict-dart--loading-tests) test-id))
+
+(defun verdict-dart--url-to-file (url)
+  "Convert a file:// URL to a local file path, or return nil."
+  ;; Returns nil if url is nil
+  (string-remove-prefix "file://" url))
+
 ;;; JSON → Event Translation
 
 (defun verdict-dart--handle-line (line &optional file)
@@ -201,49 +213,59 @@ FILE is the test file associated with this process, used for error attribution."
                                       :name       label
                                       :test-count (gethash "testCount" group)
                                       :line       (gethash "line" group)
-                                      :url        (gethash "url" group))))))
+                                      :file       (verdict-dart--url-to-file (gethash "url" group)))))))
 
             ("testStart"
              (let* ((test        (gethash "test" ev))
-                    (group-ids   (gethash "groupIDs" test))
+                    (id          (gethash "id" test))
                     (name        (gethash "name" test))
-                    (parent-name (when (and group-ids (> (length group-ids) 0))
-                                   (gethash (aref group-ids (1- (length group-ids)))
-                                            verdict-dart--group-names)))
-                    (label       (if parent-name
-                                     (verdict-dart--strip-parent-prefix parent-name name)
-                                   name)))
-               (verdict-event (list :type      :test-start
-                                    :id        (gethash "id" test)
-                                    :file-id   (gethash "suiteID" test)
-                                    :group-ids group-ids
-                                    :name      label
-                                    :line      (gethash "line" test)
-                                    :url       (gethash "url" test)))))
+                    (suite-id    (gethash "suiteID" test)))
+               (if (and (stringp name) (string-match-p "^loading " name))
+                   (puthash id suite-id verdict-dart--loading-tests)
+                 (let* ((group-ids   (gethash "groupIDs" test))
+                        (parent-name (when group-ids
+                                       (gethash (car (last group-ids))
+                                                verdict-dart--group-names)))
+                        (label       (if parent-name
+                                         (verdict-dart--strip-parent-prefix parent-name name)
+                                       name)))
+                   (verdict-event (list :type      :test-start
+                                        :id        id
+                                        :file-id   suite-id
+                                        :group-ids group-ids
+                                        :name      label
+                                        :line      (gethash "line" test)
+                                        :file      (verdict-dart--url-to-file (gethash "url" test))))))))
 
             ("print"
-             (verdict-event (list :type         :log
-                                  :severity     'info
-                                  :id           (gethash "testID" ev)
-                                  :message      (gethash "message" ev))))
+             (let ((id (verdict-dart--resolve-test-id (gethash "testID" ev))))
+               (verdict-event (list :type         :log
+                                    :severity     'info
+                                    :id           id
+                                    :message      (gethash "message" ev)))))
 
             ("error"
-             (verdict-event (list :type        :log
-                                  :severity    'error
-                                  :id          (gethash "testID" ev)
-                                  :message     (concat (gethash "error" ev) "\n" (gethash "stackTrace" ev)))))
+             (let ((id (verdict-dart--resolve-test-id (gethash "testID" ev))))
+               (verdict-event (list :type        :log
+                                    :severity    'error
+                                    :id          id
+                                    :message     (concat (gethash "error" ev) "\n" (gethash "stackTrace" ev))))))
 
             ("testDone"
-             (let* ((result (if (eq (gethash "skipped" ev) t)
-                                'skipped
-                              (pcase (gethash "result" ev)
-                                ("success" 'passed)
-                                ("failure" 'failed)
-                                (_         'error))
-                              )))
-               (verdict-event (list :type    :test-done
-                                    :id      (gethash "testID" ev)
-                                    :result  result))))
+             (let* ((raw-id  (gethash "testID" ev))
+                    (loading (gethash raw-id verdict-dart--loading-tests))
+                    (id      (or loading raw-id))
+                    (result  (if (eq (gethash "skipped" ev) t)
+                                 'skipped
+                               (pcase (gethash "result" ev)
+                                 ("success" 'passed)
+                                 ("failure" 'failed)
+                                 (_         'error)))))
+               ;; Skip successful loading tests — suite status is aggregated from children
+               (unless (and loading (eq result 'passed))
+                 (verdict-event (list :type    :test-done
+                                      :id      id
+                                      :result  result)))))
 
             ("done"
              (verdict-event (list :type    :done
@@ -293,7 +315,8 @@ FILE is the test file associated with this process, used for error attribution."
     (kill-process verdict-dart--proc))
   (setq verdict-dart--partial ""
         verdict-dart--group-names (make-hash-table)
-        verdict-dart--file-suite-ids (make-hash-table :test #'equal))
+        verdict-dart--file-suite-ids (make-hash-table :test #'equal)
+        verdict-dart--loading-tests (make-hash-table :test #'equal))
   (verdict-start scope name)
   (let* ((project-root (verdict-dart--project-root))
          (cmd          (verdict-dart--command scope file name project-root debug))

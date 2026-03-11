@@ -77,9 +77,6 @@ nil   — prompt before each run, then offer to remember the answer."
 (defvar verdict--root-ids nil
   "Ordered list of root node IDs.")
 
-(defvar verdict--loading-tests (make-hash-table :test #'equal)
-  "Hash table mapping loading-test id to its file-id.")
-
 (defvar verdict--render-timer nil
   "Debounce timer for rendering.")
 
@@ -348,7 +345,6 @@ If the node has log output or an error message, display it in *verdict-output* f
   (verdict--spinner-stop)
   (clrhash verdict--nodes)
   (setq verdict--root-ids nil)
-  (clrhash verdict--loading-tests)
   (when verdict--render-timer
     (cancel-timer verdict--render-timer)
     (setq verdict--render-timer nil))
@@ -404,14 +400,11 @@ EVENT must have a :type field with a keyword value."
     (:group
      (let* ((id        (plist-get event :id))
             (parent-id (plist-get event :parent-id))
-            (name      (plist-get event :name))
-            (file      (plist-get event :file))
-            (line-num  (plist-get event :line))
             (file-id   (plist-get event :file-id))
             (node      (list :id       id
-                             :label    name
-                             :file     file
-                             :line     line-num
+                             :label    (plist-get event :name)
+                             :file     (plist-get event :file)
+                             :line     (plist-get event :line)
                              :children nil)))
        (puthash id node verdict--nodes)
        (let ((pid (cond
@@ -423,44 +416,26 @@ EVENT must have a :type field with a keyword value."
 
     (:test-start
      (let* ((id        (plist-get event :id))
-            (name      (plist-get event :name))
-            (group-ids (plist-get event :group-ids))
-            (line-num  (plist-get event :line))
-            (file-id   (plist-get event :file-id))
-            (url       (plist-get event :url)))
-       (if (and (stringp name) (string-match-p "^loading " name))
-           (puthash id file-id verdict--loading-tests)
-         (let* ((parent-id (or (verdict--innermost-group group-ids) file-id))
-                (file      (when (and (stringp url) (not (string-empty-p url)))
-                             (verdict--url-to-file url)))
-                (node      (list :id     id
-                                 :label  name
-                                 :status 'running
-                                 :file   file
-                                 :line   line-num)))
-           (puthash id node verdict--nodes)
-           (verdict--add-child parent-id id)))))
+            (parent-id (or (verdict--innermost-group (plist-get event :group-ids)) (plist-get event :file-id)))
+            (node      (list :id     id
+                             :label  (plist-get event :name)
+                             :status 'running
+                             :file   (plist-get event :file)
+                             :line   (plist-get event :line))))
+       (puthash id node verdict--nodes)
+       (verdict--add-child parent-id id)))
 
     (:log
-     (let* ((id       (plist-get event :id))
-            (severity (plist-get event :severity))
-            (msg      (verdict--render-message severity (plist-get event :message)))
-            (target   (or (gethash id verdict--nodes)
-                          (when-let ((file-id (gethash id verdict--loading-tests)))
-                            (gethash file-id verdict--nodes)))))
-       (when (and msg target)
-         (let ((prev (plist-get target :output)))
-           (plist-put target :output (if prev (concat prev "\n" msg) msg))))))
+     (let* ((id     (plist-get event :id))
+            (msg    (verdict--render-message (plist-get event :severity) (plist-get event :message)))
+            (node   (gethash id verdict--nodes)))
+       (when (and msg node)
+         (let ((prev (plist-get node :output)))
+           (plist-put node :output (if prev (concat prev "\n" msg) msg))))))
 
     (:test-done
-     (let* ((id     (plist-get event :id))
-            (result (plist-get event :result))
-            (node   (gethash id verdict--nodes)))
-       (if node
-           (plist-put node :status result)
-         (when-let ((file-id (gethash id verdict--loading-tests)))
-           (unless (eq result 'success)
-             (plist-put (gethash file-id verdict--nodes) :status 'error))))))
+     (when-let ((node (gethash (plist-get event :id) verdict--nodes)))
+       (plist-put node :status (plist-get event :result))))
 
     (:done
      (message "verdict: test run complete")))
@@ -472,12 +447,6 @@ EVENT must have a :type field with a keyword value."
 (defun verdict--innermost-group (group-ids)
   "Return the innermost known group ID from GROUP-IDS, or nil."
   (-first (lambda (group-id) (gethash group-id verdict--nodes)) (reverse group-ids)))
-
-(defun verdict--url-to-file (url)
-  "Convert a file:// URL to a local file path."
-  (if (string-prefix-p "file://" url)
-      (substring url 7)
-    url))
 
 ;;; Debug
 

@@ -22,27 +22,26 @@
            (0.0  . (:type :group :id 5 :name "broken_test2.dart" :file "/my/project/test/broken_test2.dart" :parent-id nil))
 
            ;; broken_test.dart fails immediately — file node goes straight to error
-           (0.0  . (:type :test-start :id 400 :file-id 4 :group-ids nil :name "loading /my/project/test/broken_test.dart" :line nil :url nil))
-           (1.0  . (:type :log :id 400 :severity error
+           (1.0  . (:type :log :id 4 :severity error
                           :message "Error: Compilation failed.\ntest/broken_test.dart:5:3: Error: Undefined name 'undefinedVar'.\n  undefinedVar;\n  ^^^^^^^^^^^"))
-           (1.0  . (:type :test-done  :id 400 :result error :hidden nil :skipped nil))
+           (1.0  . (:type :test-done :id 4 :result error))
 
            ;; Phase 2: groups appear one by one — group nodes spin waiting for tests
-           (1.5  . (:type :group :id 10 :file-id 1 :parent-id 0 :name "AuthService" :test-count 3 :line 5 :url nil))
-           (2.0  . (:type :group :id 20 :file-id 2 :parent-id 0 :name "Cart" :test-count 2 :line 3 :url nil))
-           (2.5  . (:type :group :id 21 :file-id 2 :parent-id 20 :name "Cart addItem" :test-count 2 :line 7 :url nil))
-           (2.5  . (:type :group :id 30 :file-id 3 :parent-id 0 :name "LoginWidget" :test-count 2 :line 4 :url nil))
+           (1.5  . (:type :group :id 10 :file-id 1 :parent-id 0 :name "AuthService" :test-count 3 :line 5 :file nil))
+           (2.0  . (:type :group :id 20 :file-id 2 :parent-id 0 :name "Cart" :test-count 2 :line 3 :file nil))
+           (2.5  . (:type :group :id 21 :file-id 2 :parent-id 20 :name "Cart addItem" :test-count 2 :line 7 :file nil))
+           (2.5  . (:type :group :id 30 :file-id 3 :parent-id 0 :name "LoginWidget" :test-count 2 :line 4 :file nil))
 
            ;; Phase 3: tests start — individual test nodes spin while running
-           (3.0  . (:type :test-start :id 100 :file-id 1 :group-ids (10) :name "AuthService login succeeds"           :line 8  :url nil))
-           (3.0  . (:type :test-start :id 101 :file-id 1 :group-ids (10) :name "AuthService login wrong password"     :line 15 :url nil))
-           (3.0  . (:type :test-start :id 102 :file-id 1 :group-ids (10) :name "AuthService logout clears token"      :line 22 :url nil))
-           (3.0  . (:type :test-start :id 200 :file-id 2 :group-ids (20 21) :name "Cart addItem increases quantity"   :line 9  :url nil))
-           (3.0  . (:type :test-start :id 201 :file-id 2 :group-ids (20 21) :name "Cart addItem updates total"        :line 16 :url nil))
-           (3.0  . (:type :test-start :id 202 :file-id 2 :group-ids (20)    :name "Cart handles concurrent modifications" :line 24 :url nil))
-           (3.0  . (:type :test-start :id 300 :file-id 3 :group-ids (30) :name "LoginWidget renders email field"      :line 7  :url nil))
-           (3.0  . (:type :test-start :id 301 :file-id 3 :group-ids (30) :name "LoginWidget shows error on empty submit" :line 18 :url nil))
-           (3.0  . (:type :test-start :id 302 :file-id 3 :group-ids (30) :name "LoginWidget animation completes"     :line 30 :url nil))
+           (3.0  . (:type :test-start :id 100 :file-id 1 :group-ids (10) :name "AuthService login succeeds"           :line 8  :file nil))
+           (3.0  . (:type :test-start :id 101 :file-id 1 :group-ids (10) :name "AuthService login wrong password"     :line 15 :file nil))
+           (3.0  . (:type :test-start :id 102 :file-id 1 :group-ids (10) :name "AuthService logout clears token"      :line 22 :file nil))
+           (3.0  . (:type :test-start :id 200 :file-id 2 :group-ids (20 21) :name "Cart addItem increases quantity"   :line 9  :file nil))
+           (3.0  . (:type :test-start :id 201 :file-id 2 :group-ids (20 21) :name "Cart addItem updates total"        :line 16 :file nil))
+           (3.0  . (:type :test-start :id 202 :file-id 2 :group-ids (20)    :name "Cart handles concurrent modifications" :line 24 :file nil))
+           (3.0  . (:type :test-start :id 300 :file-id 3 :group-ids (30) :name "LoginWidget renders email field"      :line 7  :file nil))
+           (3.0  . (:type :test-start :id 301 :file-id 3 :group-ids (30) :name "LoginWidget shows error on empty submit" :line 18 :file nil))
+           (3.0  . (:type :test-start :id 302 :file-id 3 :group-ids (30) :name "LoginWidget animation completes"     :line 30 :file nil))
 
            ;; Phase 4: print output and completions, staggered
            (3.5  . (:type :log :severity info :id 100 :message "Sending POST /auth/login"))
