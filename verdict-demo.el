@@ -9,17 +9,17 @@
   (let ((events
          ;; Each entry is (delay-seconds . event-plist)
          ;; Phases:
-         ;;   0.0s — files announced (all show spinner with no children)
-         ;;   1.5s — groups appear (files transition; groups spin waiting for tests)
+         ;;   0.0s — suites announced (all show spinner with no children)
+         ;;   1.5s — groups appear (suites transition; groups spin waiting for tests)
          ;;   3.0s — tests start (groups transition; tests spin while running)
          ;;   4.0s+ — tests complete staggered
-         `(;; Phase 1: files only — all file nodes spin
-           (0.0  . (:type :file :id 1 :path "/my/project/test/auth_test.dart"))
-           (0.0  . (:type :file :id 2 :path "/my/project/test/cart_test.dart"))
-           (0.0  . (:type :file :id 3 :path "/my/project/test/widget_test.dart"))
-           (0.0  . (:type :file :id 4 :path "/my/project/test/broken_test.dart"))
+         `(;; Phase 1: suites only — all suite nodes spin
+           (0.0  . (:type :group :id 1 :name "auth_test.dart"   :file "/my/project/test/auth_test.dart"   :parent-id nil))
+           (0.0  . (:type :group :id 2 :name "cart_test.dart"   :file "/my/project/test/cart_test.dart"   :parent-id nil))
+           (0.0  . (:type :group :id 3 :name "widget_test.dart" :file "/my/project/test/widget_test.dart" :parent-id nil))
+           (0.0  . (:type :group :id 4 :name "broken_test.dart" :file "/my/project/test/broken_test.dart" :parent-id nil))
            ;; broken_test2.dart: announced but never receives any events — spins until stopped
-           (0.0  . (:type :file :id 5 :path "/my/project/test/broken_test2.dart"))
+           (0.0  . (:type :group :id 5 :name "broken_test2.dart" :file "/my/project/test/broken_test2.dart" :parent-id nil))
 
            ;; broken_test.dart fails immediately — file node goes straight to error
            (0.0  . (:type :test-start :id 400 :file-id 4 :group-ids [] :name "loading /my/project/test/broken_test.dart" :line nil :url nil))

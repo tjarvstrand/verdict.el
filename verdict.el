@@ -459,36 +459,27 @@ EVENT must have a :type field with a keyword value."
   (when verdict-log-events
     (message "verdict: Received event %s" event))
   (pcase (plist-get event :type)
-    (:file
-     (let* ((id   (plist-get event :id))
-            (path (plist-get event :path))
-            (node (list :id        id
-                        :label     (file-name-nondirectory path)
-                        :file      path
-                        :status    nil
-                        :children  nil)))
-       (setq verdict--nodes
-             (verdict--update-at-path verdict--nodes (list id) (lambda (_) node)))
-       (puthash id (list id) verdict--paths)))
-
     (:group
      (let* ((id        (plist-get event :id))
             (parent-id (plist-get event :parent-id))
             (name      (plist-get event :name))
+            (file      (plist-get event :file))
             (line-num  (plist-get event :line))
             (file-id   (plist-get event :file-id)))
-       (unless (null parent-id)
-         (let* ((parent-path (or (gethash parent-id verdict--paths)
-                                 (list file-id)))
-                (group-path  (append parent-path (list :children id)))
-                (node        (list :id        id
-                                   :label     name
-                                   :status    nil
-                                   :line      line-num
-                                   :children  nil)))
-           (setq verdict--nodes
-                 (verdict--update-at-path verdict--nodes group-path (lambda (_) node)))
-           (puthash id group-path verdict--paths)))))
+       (let* ((parent-path (when parent-id
+                              (or (gethash parent-id verdict--paths)
+                                  (list file-id))))
+              (group-path  (if parent-path
+                               (append parent-path (list :children id))
+                             (list id)))
+              (node        (list :id       id
+                                 :label    name
+                                 :file     file
+                                 :line     line-num
+                                 :children nil)))
+         (setq verdict--nodes
+               (verdict--update-at-path verdict--nodes group-path (lambda (_) node)))
+         (puthash id group-path verdict--paths))))
 
     (:test-start
      (let* ((id        (plist-get event :id))

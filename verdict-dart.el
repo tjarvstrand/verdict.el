@@ -166,10 +166,12 @@ FILE is the test file associated with this process, used for error attribution."
             ("start" nil)
 
             ("suite"
-             (let* ((suite (gethash "suite" ev)))
-               (verdict-event (list :type :file
-                                    :id   (gethash "id" suite)
-                                    :path (gethash "path" suite)))))
+             (let* ((suite (gethash "suite" ev))
+                    (path  (gethash "path" suite)))
+               (verdict-event (list :type      :group
+                                    :id        (gethash "id" suite)
+                                    :name      (file-name-nondirectory path)
+                                    :file      path))))
 
             ("group"
              (let* ((group       (gethash "group" ev))
