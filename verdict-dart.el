@@ -159,6 +159,14 @@ Returns (:kind KIND :name NAME :line LINE) or nil."
         (substring name (length prefix))
       name)))
 
+(defun verdict-dart--innermost-group (group-ids)
+  "Return the innermost known group ID from GROUP-IDS, or nil.
+Skips root groups (those with empty names)."
+  (-first (lambda (id)
+            (--> (gethash id verdict-dart--group-names)
+                 (not (string-empty-p it))))
+          (reverse group-ids)))
+
 (defun verdict-dart--resolve-test-id (test-id)
   "Return TEST-ID, or the suite ID if TEST-ID is a loading test."
   (or (gethash test-id verdict-dart--loading-tests) test-id))
@@ -175,7 +183,7 @@ Returns (:kind KIND :name NAME :line LINE) or nil."
 FILE is the test file associated with this process, used for error attribution."
   (condition-case err
       (unless (string-empty-p line)
-        (let* ((ev   (json-parse-string line :object-type 'hash-table :array-type 'list))
+        (let* ((ev   (json-parse-string line :object-type 'hash-table :array-type 'list :null-object nil))
                (type (gethash "type" ev)))
           (pcase type
             ("start" nil)
@@ -203,36 +211,38 @@ FILE is the test file associated with this process, used for error attribution."
                ;; Always store full name so children can strip it.
                (when (numberp id)
                  (puthash id name verdict-dart--group-names))
-               ;; Skip root groups (null parentID or empty name)
-               (unless (or (eq parent-id :null)
-                           (and (stringp name) (string-empty-p name)))
-                 (verdict-event (list :type       :group
-                                      :id         id
-                                      :file-id    (gethash "suiteID" group)
-                                      :parent-id  (if (eq parent-id :null) nil parent-id)
-                                      :name       label
-                                      :test-count (gethash "testCount" group)
-                                      :line       (gethash "line" group)
-                                      :file       (verdict-dart--url-to-file (gethash "url" group)))))))
+               (when (and parent-id (not (string-empty-p name)))
+                 (let ((suite-id (gethash "suiteID" group)))
+                   (verdict-event (list :type       :group
+                                        :id         id
+                                        :parent-id  (if-let ((pname (gethash parent-id verdict-dart--group-names))
+                                                             ((not (string-empty-p pname))))
+                                                        parent-id
+                                                      suite-id)
+                                        :name       label
+                                        :test-count (gethash "testCount" group)
+                                        :line       (gethash "line" group)
+                                        :file       (verdict-dart--url-to-file (gethash "url" group))))))))
 
             ("testStart"
              (let* ((test        (gethash "test" ev))
                     (id          (gethash "id" test))
                     (name        (gethash "name" test))
                     (suite-id    (gethash "suiteID" test)))
-               (if (and (stringp name) (string-match-p "^loading " name))
+               (if (string-match-p "^loading " name)
                    (puthash id suite-id verdict-dart--loading-tests)
                  (let* ((group-ids   (gethash "groupIDs" test))
-                        (parent-name (when group-ids
-                                       (gethash (car (last group-ids))
-                                                verdict-dart--group-names)))
+                        (parent-id  (or (verdict-dart--innermost-group group-ids) suite-id))
+                        (parent-name (-> group-ids
+                                         last
+                                         car
+                                         (gethash verdict-dart--group-names)))
                         (label       (if parent-name
                                          (verdict-dart--strip-parent-prefix parent-name name)
                                        name)))
                    (verdict-event (list :type      :test-start
                                         :id        id
-                                        :file-id   suite-id
-                                        :group-ids group-ids
+                                        :parent-id parent-id
                                         :name      label
                                         :line      (gethash "line" test)
                                         :file      (verdict-dart--url-to-file (gethash "url" test))))))))

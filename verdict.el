@@ -283,11 +283,10 @@ If the node has log output or an error message, display it in *verdict-output* f
 
 (defun verdict--add-child (parent-id child-id)
   "Append CHILD-ID to the :children list of the node at PARENT-ID."
-  (let ((parent (gethash parent-id verdict--nodes)))
-    (puthash parent-id
-             (plist-put parent :children
-                        (append (plist-get parent :children) (list child-id)))
-             verdict--nodes)))
+  (let* ((parent (gethash parent-id verdict--nodes))
+         (updated-children (append (plist-get parent :children) (list child-id)))
+         (updated-parent (plist-put parent :children updated-children)))
+    (puthash parent-id updated-parent verdict--nodes)))
 
 ;;; Render
 
@@ -400,23 +399,19 @@ EVENT must have a :type field with a keyword value."
     (:group
      (let* ((id        (plist-get event :id))
             (parent-id (plist-get event :parent-id))
-            (file-id   (plist-get event :file-id))
             (node      (list :id       id
                              :label    (plist-get event :name)
                              :file     (plist-get event :file)
                              :line     (plist-get event :line)
                              :children nil)))
        (puthash id node verdict--nodes)
-       (let ((pid (cond
-                    ((and parent-id (gethash parent-id verdict--nodes)) parent-id)
-                    ((and file-id (gethash file-id verdict--nodes)) file-id))))
-         (if pid
-             (verdict--add-child pid id)
-           (setq verdict--root-ids (append verdict--root-ids (list id)))))))
+       (if (gethash parent-id verdict--nodes)
+           (verdict--add-child parent-id id)
+         (setq verdict--root-ids (append verdict--root-ids (list id))))))
 
     (:test-start
      (let* ((id        (plist-get event :id))
-            (parent-id (or (verdict--innermost-group (plist-get event :group-ids)) (plist-get event :file-id)))
+            (parent-id (plist-get event :parent-id))
             (node      (list :id     id
                              :label  (plist-get event :name)
                              :status 'running
@@ -441,12 +436,6 @@ EVENT must have a :type field with a keyword value."
      (message "verdict: test run complete")))
 
   (verdict--schedule-render))
-
-;;; Internal Helpers
-
-(defun verdict--innermost-group (group-ids)
-  "Return the innermost known group ID from GROUP-IDS, or nil."
-  (-first (lambda (group-id) (gethash group-id verdict--nodes)) (reverse group-ids)))
 
 ;;; Debug
 

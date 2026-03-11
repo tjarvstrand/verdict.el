@@ -27,21 +27,21 @@
            (1.0  . (:type :test-done :id 4 :result error))
 
            ;; Phase 2: groups appear one by one — group nodes spin waiting for tests
-           (1.5  . (:type :group :id 10 :file-id 1 :parent-id 0 :name "AuthService" :test-count 3 :line 5 :file nil))
-           (2.0  . (:type :group :id 20 :file-id 2 :parent-id 0 :name "Cart" :test-count 2 :line 3 :file nil))
-           (2.5  . (:type :group :id 21 :file-id 2 :parent-id 20 :name "Cart addItem" :test-count 2 :line 7 :file nil))
-           (2.5  . (:type :group :id 30 :file-id 3 :parent-id 0 :name "LoginWidget" :test-count 2 :line 4 :file nil))
+           (1.5  . (:type :group :id 10 :parent-id 1  :name "AuthService"  :line 5))
+           (2.0  . (:type :group :id 20 :parent-id 2  :name "Cart"         :line 3))
+           (2.5  . (:type :group :id 21 :parent-id 20 :name "Cart addItem" :line 7))
+           (2.5  . (:type :group :id 30 :parent-id 3  :name "LoginWidget"  :line 4))
 
            ;; Phase 3: tests start — individual test nodes spin while running
-           (3.0  . (:type :test-start :id 100 :file-id 1 :group-ids (10) :name "AuthService login succeeds"           :line 8  :file nil))
-           (3.0  . (:type :test-start :id 101 :file-id 1 :group-ids (10) :name "AuthService login wrong password"     :line 15 :file nil))
-           (3.0  . (:type :test-start :id 102 :file-id 1 :group-ids (10) :name "AuthService logout clears token"      :line 22 :file nil))
-           (3.0  . (:type :test-start :id 200 :file-id 2 :group-ids (20 21) :name "Cart addItem increases quantity"   :line 9  :file nil))
-           (3.0  . (:type :test-start :id 201 :file-id 2 :group-ids (20 21) :name "Cart addItem updates total"        :line 16 :file nil))
-           (3.0  . (:type :test-start :id 202 :file-id 2 :group-ids (20)    :name "Cart handles concurrent modifications" :line 24 :file nil))
-           (3.0  . (:type :test-start :id 300 :file-id 3 :group-ids (30) :name "LoginWidget renders email field"      :line 7  :file nil))
-           (3.0  . (:type :test-start :id 301 :file-id 3 :group-ids (30) :name "LoginWidget shows error on empty submit" :line 18 :file nil))
-           (3.0  . (:type :test-start :id 302 :file-id 3 :group-ids (30) :name "LoginWidget animation completes"     :line 30 :file nil))
+           (3.0  . (:type :test-start :id 100 :parent-id 10 :name "login succeeds"           :line 8))
+           (3.0  . (:type :test-start :id 101 :parent-id 10 :name "login wrong password"     :line 15))
+           (3.0  . (:type :test-start :id 102 :parent-id 10 :name "logout clears token"      :line 22))
+           (3.0  . (:type :test-start :id 200 :parent-id 21 :name "increases quantity"        :line 9))
+           (3.0  . (:type :test-start :id 201 :parent-id 21 :name "updates total"             :line 16))
+           (3.0  . (:type :test-start :id 202 :parent-id 20 :name "handles concurrent modifications" :line 24))
+           (3.0  . (:type :test-start :id 300 :parent-id 30 :name "renders email field"      :line 7))
+           (3.0  . (:type :test-start :id 301 :parent-id 30 :name "shows error on empty submit" :line 18))
+           (3.0  . (:type :test-start :id 302 :parent-id 30 :name "animation completes"      :line 30))
 
            ;; Phase 4: print output and completions, staggered
            (3.5  . (:type :log :severity info :id 100 :message "Sending POST /auth/login"))
