@@ -71,11 +71,11 @@ nil   — prompt before each run, then offer to remember the answer."
 
 ;;; Global State
 
-(defvar verdict--nodes nil
-  "Alist-tree of test nodes at the root level: ((id . node) ...).")
+(defvar verdict--nodes (make-hash-table :test #'equal)
+  "Hash table mapping node id to its plist.")
 
-(defvar verdict--paths (make-hash-table :test #'equal)
-  "Hash table mapping node id to its path list into verdict--nodes.")
+(defvar verdict--root-ids nil
+  "Ordered list of root node IDs.")
 
 (defvar verdict--loading-tests (make-hash-table :test #'equal)
   "Hash table mapping loading-test id to its file-id.")
@@ -158,7 +158,7 @@ nil   — prompt before each run, then offer to remember the answer."
       (propertize message 'face 'verdict-error-face)
     message))
 
-;;; Alist-Tree → List-Tree Conversion
+;;; Build Display Tree
 
 (defun verdict--output-node (parent-id parent-label output)
   "Return a synthetic *output* leaf plist for PARENT-ID with OUTPUT."
@@ -168,19 +168,18 @@ nil   — prompt before each run, then offer to remember the answer."
         :output output
         :status nil))
 
-(defun verdict--alist-tree-to-list (alist-tree)
-  "Convert an alist-tree of verdict nodes to a flat list for treemacs.
-Recursively converts :children and computes aggregate :status for groups.
-Injects a synthetic *output* child for any suite or group with :output."
+(defun verdict--build-tree (ids)
+  "Build a nested tree of node plists from IDS by resolving children.
+Recursively resolves :children IDs, computes aggregate :status for groups,
+and injects a synthetic *output* child for any group with :output."
   (mapcar
-   (lambda (pair)
-     (let* ((node     (cdr pair))
-            (id       (plist-get node :id))
-            (children (plist-get node :children))
-            (output   (plist-get node :output)))
+   (lambda (id)
+     (let* ((node       (gethash id verdict--nodes))
+            (child-ids  (plist-get node :children))
+            (output     (plist-get node :output)))
        (cond
-         (children
-          (let* ((child-list (verdict--alist-tree-to-list children))
+         (child-ids
+          (let* ((child-list (verdict--build-tree child-ids))
                  (child-list (if output
                                  (cons (verdict--output-node id (plist-get node :label) output) child-list)
                                child-list))
@@ -197,7 +196,7 @@ Injects a synthetic *output* child for any suite or group with :output."
             (plist-put copy :children (list (verdict--output-node id (plist-get node :label) output)))
             copy))
          (t node))))
-   alist-tree))
+   ids))
 
 ;;; Treemacs Node Types
 
@@ -283,41 +282,15 @@ If the node has log output or an error message, display it in *verdict-output* f
         (verdict--visit)
       (treemacs-TAB-action))))
 
-;;; Path Traversal Helpers
+;;; Node Helpers
 
-(defun verdict--get-at-path (data path)
-  "Return value in DATA at PATH.
-Keyword keys use plist-get; other keys use alist-get with equal."
-  (if (null path) data
-    (let* ((key (car path))
-           (val (if (keywordp key)
-                    (plist-get data key)
-                  (alist-get key data nil nil #'equal))))
-      (verdict--get-at-path val (cdr path)))))
-
-(defun verdict--update-at-path (data path fn)
-  "Return new DATA with value at PATH replaced by (funcall FN current).
-FN returning nil deletes an alist entry."
-  (if (null path) (funcall fn data)
-    (let* ((key  (car path))
-           (rest (cdr path)))
-      (if (keywordp key)
-          (plist-put (copy-sequence data) key
-                     (verdict--update-at-path (plist-get data key) rest fn))
-        (let* ((existing (assoc key data #'equal))
-               (current  (cdr existing))
-               (new-val  (verdict--update-at-path current rest fn)))
-          (cond
-            ((and new-val existing)
-             ;; Update in place — preserves insertion order
-             (mapcar (lambda (pair)
-                       (if (equal (car pair) key) (cons key new-val) pair))
-                     data))
-            (new-val
-             ;; New key — append at end
-             (append data (list (cons key new-val))))
-            (t
-             (assoc-delete-all key data #'equal))))))))
+(defun verdict--add-child (parent-id child-id)
+  "Append CHILD-ID to the :children list of the node at PARENT-ID."
+  (let ((parent (gethash parent-id verdict--nodes)))
+    (puthash parent-id
+             (plist-put parent :children
+                        (append (plist-get parent :children) (list child-id)))
+             verdict--nodes)))
 
 ;;; Render
 
@@ -330,7 +303,7 @@ FN returning nil deletes an alist entry."
 (defun verdict--render ()
   "Convert state to display model and refresh the verdict buffer. Returns the verdict buffer"
   (setq verdict--render-timer nil)
-  (setq verdict-model (verdict--alist-tree-to-list verdict--nodes))
+  (setq verdict-model (verdict--build-tree verdict--root-ids))
 
   ;; Avoid accidental shadowing of treemacs-initialize by the deprecated treemacs-extensions
   (when (s-contains? "treemacs-extensions" (symbol-file 'treemacs-initialize 'defun))
@@ -373,8 +346,8 @@ FN returning nil deletes an alist entry."
 (defun verdict-reset ()
   "Clear all internal verdict state. Does not render."
   (verdict--spinner-stop)
-  (setq verdict--nodes nil)
-  (clrhash verdict--paths)
+  (clrhash verdict--nodes)
+  (setq verdict--root-ids nil)
   (clrhash verdict--loading-tests)
   (when verdict--render-timer
     (cancel-timer verdict--render-timer)
@@ -416,14 +389,10 @@ TYPE is one of :project :file :group :test. NAME is a string or nil."
     (cancel-timer verdict--render-timer)
     (setq verdict--render-timer nil))
   (maphash
-   (lambda (_id path)
-     (let ((node (verdict--get-at-path verdict--nodes path)))
-       (when (eq (plist-get node :status) 'running)
-         (setq verdict--nodes
-               (verdict--update-at-path verdict--nodes
-                                        (append path (list :status))
-                                        (lambda (_) 'stopped))))))
-   verdict--paths)
+   (lambda (id node)
+     (when (eq (plist-get node :status) 'running)
+       (puthash id (plist-put node :status 'stopped) verdict--nodes)))
+   verdict--nodes)
   (verdict--render))
 
 (defun verdict-event (event)
@@ -438,21 +407,19 @@ EVENT must have a :type field with a keyword value."
             (name      (plist-get event :name))
             (file      (plist-get event :file))
             (line-num  (plist-get event :line))
-            (file-id   (plist-get event :file-id)))
-       (let* ((parent-path (when parent-id
-                              (or (gethash parent-id verdict--paths)
-                                  (list file-id))))
-              (group-path  (if parent-path
-                               (append parent-path (list :children id))
-                             (list id)))
-              (node        (list :id       id
-                                 :label    name
-                                 :file     file
-                                 :line     line-num
-                                 :children nil)))
-         (setq verdict--nodes
-               (verdict--update-at-path verdict--nodes group-path (lambda (_) node)))
-         (puthash id group-path verdict--paths))))
+            (file-id   (plist-get event :file-id))
+            (node      (list :id       id
+                             :label    name
+                             :file     file
+                             :line     line-num
+                             :children nil)))
+       (puthash id node verdict--nodes)
+       (let ((pid (cond
+                    ((and parent-id (gethash parent-id verdict--nodes)) parent-id)
+                    ((and file-id (gethash file-id verdict--nodes)) file-id))))
+         (if pid
+             (verdict--add-child pid id)
+           (setq verdict--root-ids (append verdict--root-ids (list id)))))))
 
     (:test-start
      (let* ((id        (plist-get event :id))
@@ -463,51 +430,37 @@ EVENT must have a :type field with a keyword value."
             (url       (plist-get event :url)))
        (if (and (stringp name) (string-match-p "^loading " name))
            (puthash id file-id verdict--loading-tests)
-         (let* ((parent-path (verdict--innermost-group-path group-ids file-id))
-                (test-path   (append parent-path (list :children id)))
-                (file        (when (and (stringp url) (not (string-empty-p url)))
-                               (verdict--url-to-file url)))
-                (node        (list :id     id
-                                   :label  name
-                                   :status 'running
-                                   :file   file
-                                   :line   line-num)))
-           (setq verdict--nodes
-                 (verdict--update-at-path verdict--nodes test-path (lambda (_) node)))
-           (puthash id test-path verdict--paths)))))
+         (let* ((parent-id (verdict--innermost-group group-ids file-id))
+                (file      (when (and (stringp url) (not (string-empty-p url)))
+                             (verdict--url-to-file url)))
+                (node      (list :id     id
+                                 :label  name
+                                 :status 'running
+                                 :file   file
+                                 :line   line-num)))
+           (puthash id node verdict--nodes)
+           (verdict--add-child parent-id id)))))
 
     (:log
      (let* ((id       (plist-get event :id))
             (severity (plist-get event :severity))
             (msg      (verdict--render-message severity (plist-get event :message)))
-            (path     (gethash id verdict--paths)))
-       (when msg
-         (let ((output-path (if path
-                                (append path (list :output))
-                              (when-let ((file-id (gethash id verdict--loading-tests)))
-                                (list file-id :output)))))
-           (when output-path
-             (setq verdict--nodes
-                   (verdict--update-at-path verdict--nodes output-path
-                                            (lambda (prev)
-                                              (if prev (concat prev "\n" msg) msg)))))))))
+            (target   (or (gethash id verdict--nodes)
+                          (when-let ((file-id (gethash id verdict--loading-tests)))
+                            (gethash file-id verdict--nodes)))))
+       (when (and msg target)
+         (let ((prev (plist-get target :output)))
+           (plist-put target :output (if prev (concat prev "\n" msg) msg))))))
 
     (:test-done
-     (let* ((id        (plist-get event :id))
-            (result    (plist-get event :result))
-            (test-path (gethash id verdict--paths)))
-         (when test-path
-           (setq verdict--nodes
-                 (verdict--update-at-path verdict--nodes
-                                          (append test-path (list :status))
-                                          (lambda (_) result))))
-         (unless test-path
-           (when-let ((file-id (gethash id verdict--loading-tests)))
-             (unless (eq result 'success)
-               (setq verdict--nodes
-                     (verdict--update-at-path verdict--nodes
-                                              (list file-id :status)
-                                              (lambda (_) 'error))))))))
+     (let* ((id     (plist-get event :id))
+            (result (plist-get event :result))
+            (node   (gethash id verdict--nodes)))
+       (if node
+           (plist-put node :status result)
+         (when-let ((file-id (gethash id verdict--loading-tests)))
+           (unless (eq result 'success)
+             (plist-put (gethash file-id verdict--nodes) :status 'error))))))
 
     (:done
      (message "verdict: test run complete")))
@@ -516,15 +469,15 @@ EVENT must have a :type field with a keyword value."
 
 ;;; Internal Helpers
 
-(defun verdict--innermost-group-path (group-ids file-id)
-  "Return path to innermost known group from GROUP-IDS, falling back to FILE-ID."
+(defun verdict--innermost-group (group-ids file-id)
+  "Return the innermost known group ID from GROUP-IDS, falling back to FILE-ID."
   (let ((ids (reverse (append group-ids nil)))
         (result nil))
     (while (and ids (not result))
-      (when-let ((path (gethash (car ids) verdict--paths)))
-        (setq result path))
+      (when (gethash (car ids) verdict--nodes)
+        (setq result (car ids)))
       (setq ids (cdr ids)))
-    (or result (list file-id))))
+    (or result file-id)))
 
 (defun verdict--url-to-file (url)
   "Convert a file:// URL to a local file path."
