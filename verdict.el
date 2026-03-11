@@ -10,7 +10,6 @@
 ;; TODO
 ;; - Simplify code
 ;; - Tests
-;; - Remove unused and redundant event types
 
 ;;; Faces
 
