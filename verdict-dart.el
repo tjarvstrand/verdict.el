@@ -163,7 +163,7 @@ Returns (:kind KIND :name NAME :line LINE) or nil."
 FILE is the test file associated with this process, used for error attribution."
   (condition-case err
       (unless (string-empty-p line)
-        (let* ((ev   (json-parse-string line :object-type 'hash-table))
+        (let* ((ev   (json-parse-string line :object-type 'hash-table :array-type 'list))
                (type (gethash "type" ev)))
           (pcase type
             ("start" nil)

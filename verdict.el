@@ -430,7 +430,7 @@ EVENT must have a :type field with a keyword value."
             (url       (plist-get event :url)))
        (if (and (stringp name) (string-match-p "^loading " name))
            (puthash id file-id verdict--loading-tests)
-         (let* ((parent-id (verdict--innermost-group group-ids file-id))
+         (let* ((parent-id (or (verdict--innermost-group group-ids) file-id))
                 (file      (when (and (stringp url) (not (string-empty-p url)))
                              (verdict--url-to-file url)))
                 (node      (list :id     id
@@ -469,15 +469,9 @@ EVENT must have a :type field with a keyword value."
 
 ;;; Internal Helpers
 
-(defun verdict--innermost-group (group-ids file-id)
-  "Return the innermost known group ID from GROUP-IDS, falling back to FILE-ID."
-  (let ((ids (reverse (append group-ids nil)))
-        (result nil))
-    (while (and ids (not result))
-      (when (gethash (car ids) verdict--nodes)
-        (setq result (car ids)))
-      (setq ids (cdr ids)))
-    (or result file-id)))
+(defun verdict--innermost-group (group-ids)
+  "Return the innermost known group ID from GROUP-IDS, or nil."
+  (-first (lambda (group-id) (gethash group-id verdict--nodes)) (reverse group-ids)))
 
 (defun verdict--url-to-file (url)
   "Convert a file:// URL to a local file path."
