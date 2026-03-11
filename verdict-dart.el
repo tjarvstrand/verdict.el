@@ -237,7 +237,8 @@ FILE is the test file associated with this process, used for error attribution."
     (unless (string-empty-p verdict-dart--partial)
       (verdict-dart--handle-line verdict-dart--partial file)
       (setq verdict-dart--partial "")))
-  (verdict-stop)
+  (when (eq proc verdict-dart--proc)
+    (verdict-stop))
   (message "verdict: process %s" (string-trim event)))
 
 ;;; Internal Run
