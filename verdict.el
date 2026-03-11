@@ -211,7 +211,6 @@ Injects a synthetic *output* child for any suite or group with :output."
   :key         (plist-get item :id)
   :children    (plist-get item :children)
   :child-type  'verdict-node
-  :more-properties      (unless (plist-get item :children) '(:leaf t))
   :ret-action           #'verdict--toggle-or-visit
   :double-click-action  #'verdict--toggle-or-visit)
 
@@ -278,9 +277,8 @@ If the node has log output or an error message, display it in *verdict-output* f
   "Expand/collapse group nodes; navigate to file/line for leaf nodes."
   (interactive "P")
   (let* ((btn  (treemacs-node-at-point))
-         (item (treemacs-button-get btn :item))
-         (leaf (treemacs-button-get btn :leaf)))
-    (if (or leaf (null (plist-get item :children)))
+         (item (treemacs-button-get btn :item)))
+    (if (null (plist-get item :children))
         (verdict--visit)
       (treemacs-TAB-action))))
 
@@ -582,13 +580,12 @@ EVENT must have a :type field with a keyword value."
     (if (null btn)
         (message "verdict: no button at point")
       (let* ((state (treemacs-button-get btn :state))
-             (leaf  (treemacs-button-get btn :leaf))
              (depth (treemacs-button-get btn :depth))
              (path  (treemacs-button-get btn :path))
              (item  (treemacs-button-get btn :item))
              (kids  (and item (plist-get item :children))))
-        (message "verdict: state=%s leaf=%s depth=%s path=%s children=%s"
-                 state leaf depth path
+        (message "verdict: state=%s depth=%s path=%s children=%s"
+                 state depth path
                  (if kids (format "(%d items)" (length kids)) "nil"))))))
 
 (provide 'verdict)
