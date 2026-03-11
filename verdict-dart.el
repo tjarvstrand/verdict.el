@@ -26,6 +26,9 @@
 (defvar verdict-dart--last-debug nil
   "Last run debug flag.")
 
+(defvar verdict-dart--group-names (make-hash-table)
+  "Map of dart group ID (integer) → full name string.")
+
 ;;; Dart String Literal Parsing
 
 (defconst verdict-dart--string-prefixes
@@ -141,6 +144,15 @@ Returns (:kind KIND :name NAME :line LINE) or nil."
       (setq cmd (append cmd (list file))))
     cmd))
 
+;;; Helpers
+
+(defun verdict-dart--strip-parent-prefix (parent-name name)
+  "Strip PARENT-NAME prefix (plus one space) from NAME if present."
+  (let ((prefix (concat parent-name " ")))
+    (if (string-prefix-p prefix name)
+        (substring name (length prefix))
+      name)))
+
 ;;; JSON → Event Translation
 
 (defun verdict-dart--handle-line (line &optional file)
@@ -160,28 +172,45 @@ FILE is the test file associated with this process, used for error attribution."
                                     :path (gethash "path" suite)))))
 
             ("group"
-             (let* ((group     (gethash "group" ev))
-                    (parent-id (gethash "parentID" group))
-                    (name      (gethash "name" group)))
+             (let* ((group       (gethash "group" ev))
+                    (parent-id   (gethash "parentID" group))
+                    (id          (gethash "id" group))
+                    (name        (gethash "name" group))
+                    (parent-name (and (numberp parent-id)
+                                      (gethash parent-id verdict-dart--group-names)))
+                    (label       (if parent-name
+                                     (verdict-dart--strip-parent-prefix parent-name name)
+                                   name)))
+               ;; Always store full name so children can strip it.
+               (when (numberp id)
+                 (puthash id name verdict-dart--group-names))
                ;; Skip root groups (null parentID or empty name)
                (unless (or (eq parent-id :null)
                            (and (stringp name) (string-empty-p name)))
                  (verdict-event (list :type       :group
-                                      :id         (gethash "id" group)
+                                      :id         id
                                       :file-id    (gethash "suiteID" group)
                                       :parent-id  (if (eq parent-id :null) nil parent-id)
-                                      :name       name
+                                      :name       label
                                       :test-count (gethash "testCount" group)
                                       :line       (gethash "line" group)
                                       :url        (gethash "url" group))))))
 
             ("testStart"
-             (let* ((test (gethash "test" ev)))
+             (let* ((test        (gethash "test" ev))
+                    (group-ids   (gethash "groupIDs" test))
+                    (name        (gethash "name" test))
+                    (parent-name (when (and group-ids (> (length group-ids) 0))
+                                   (gethash (aref group-ids (1- (length group-ids)))
+                                            verdict-dart--group-names)))
+                    (label       (if parent-name
+                                     (verdict-dart--strip-parent-prefix parent-name name)
+                                   name)))
                (verdict-event (list :type      :test-start
                                     :id        (gethash "id" test)
                                     :file-id   (gethash "suiteID" test)
-                                    :group-ids (gethash "groupIDs" test)
-                                    :name      (gethash "name" test)
+                                    :group-ids group-ids
+                                    :name      label
                                     :line      (gethash "line" test)
                                     :url       (gethash "url" test)))))
 
@@ -251,7 +280,8 @@ FILE is the test file associated with this process, used for error attribution."
         verdict-dart--last-debug debug)
   (when (process-live-p verdict-dart--proc)
     (kill-process verdict-dart--proc))
-  (setq verdict-dart--partial "")
+  (setq verdict-dart--partial ""
+        verdict-dart--group-names (make-hash-table))
   (verdict-start scope name)
   (let* ((project-root (verdict-dart--project-root))
          (cmd          (verdict-dart--command scope file name project-root debug))
