@@ -83,13 +83,13 @@ Defaults to `braille' if a suitable font was auto-detected at load time."
   :type '(choice (const :tag "Braille" braille) (const :tag "ASCII" ascii))
   :group 'verdict)
 
-(defcustom verdict-icon-height 1.2
+(defcustom verdict-icon-height 1.0
   "Relative height of verdict status icons, as a float (1.0 = normal size)."
   :type 'number
   :group 'verdict)
 
-(defcustom verdict-icon-open    "▾" "Icon for expanded group/file nodes."  :type 'string :group 'verdict)
-(defcustom verdict-icon-closed  "▸" "Icon for collapsed group/file nodes." :type 'string :group 'verdict)
+(defcustom verdict-icon-open    "▼" "Icon for expanded group/file nodes."  :type 'string :group 'verdict)
+(defcustom verdict-icon-closed  "▶" "Icon for collapsed group/file nodes." :type 'string :group 'verdict)
 (defcustom verdict-icon-passed  "✓" "Icon for passed tests."               :type 'string :group 'verdict)
 (defcustom verdict-icon-failed  "✗" "Icon for failed tests."               :type 'string :group 'verdict)
 (defcustom verdict-icon-error   "!" "Icon for errored tests."              :type 'string :group 'verdict)
