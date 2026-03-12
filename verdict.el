@@ -258,7 +258,7 @@ and injects a synthetic *output* child for any group with :output."
   :key         (plist-get item :id)
   :children    (plist-get item :children)
   :child-type  'verdict-node
-  :ret-action           #'verdict--toggle-or-visit
+  :ret-action           #'verdict--toggle-or-show-output
   :double-click-action  #'verdict--toggle-or-visit)
 
 (treemacs-define-variadic-entry-node-type verdict-root
@@ -289,45 +289,54 @@ and injects a synthetic *output* child for any group with :output."
 
 ;;; Visit / Toggle Actions
 
-(defun verdict--visit (&optional _arg)
-  "Navigate to test file/line for node at point.
-If the node has log output or an error message, display it in *verdict-output* first."
+(defun verdict--show-output (&optional _arg)
+  "Display output for the node at point in *verdict-output*."
   (interactive "P")
   (let* ((btn    (treemacs-node-at-point))
          (item   (treemacs-button-get btn :item))
-         (file   (plist-get item :file))
-         (line   (or (plist-get item :line) 1))
          (label  (or (plist-get item :title) (plist-get item :label)))
          (output (plist-get item :output)))
     (with-current-buffer (get-buffer-create "*verdict-output*")
       (verdict-output-mode)
       (let (buffer-read-only)
         (erase-buffer)
-        (when label
-          (let ((sep (propertize (make-string (length label) ?─) 'face 'verdict-name-face)))
-            (insert sep)
-            (insert "\n")
-            (insert (propertize label 'face 'verdict-name-face))
-            (insert "\n")
-            (insert sep)
-            (insert "\n\n")))
+        (let ((sep (propertize (make-string (length label) ?─) 'face 'verdict-name-face)))
+          (insert sep "\n" (propertize label 'face 'verdict-name-face) "\n" sep "\n\n"))
         (when output
           (insert (ansi-color-apply output)))
         (goto-char (point-min)))
-      (display-buffer (current-buffer) '(display-buffer-below-selected)))
+      (display-buffer (current-buffer) '(display-buffer-below-selected)))))
+
+(defun verdict--visit (&optional _arg)
+  "Navigate to test file/line for node at point."
+  (interactive "P")
+  (let* ((btn  (treemacs-node-at-point))
+         (item (treemacs-button-get btn :item))
+         (file (plist-get item :file))
+         (line (or (plist-get item :line) 1)))
+    (verdict--show-output)
     (when file
       (find-file-other-window file)
       (goto-char (point-min))
       (forward-line (1- line)))))
+
+(defun verdict--toggle-or-show-output (&optional _arg)
+  "Expand/collapse group nodes; show output for leaf nodes."
+  (interactive "P")
+  (let* ((btn  (treemacs-node-at-point))
+         (item (treemacs-button-get btn :item)))
+    (if (plist-get item :children)
+        (treemacs-TAB-action)
+      (verdict--show-output))))
 
 (defun verdict--toggle-or-visit (&optional _arg)
   "Expand/collapse group nodes; navigate to file/line for leaf nodes."
   (interactive "P")
   (let* ((btn  (treemacs-node-at-point))
          (item (treemacs-button-get btn :item)))
-    (if (null (plist-get item :children))
-        (verdict--visit)
-      (treemacs-TAB-action))))
+    (if (plist-get item :children)
+        (treemacs-TAB-action)
+      (verdict--visit))))
 
 ;;; Node Helpers
 
