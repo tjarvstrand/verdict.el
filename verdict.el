@@ -43,9 +43,47 @@
   '((t :inherit shadow))
   "Face for test name header in the output buffer.")
 
+;;; Braille font detection
+
+(defconst verdict--braille-fonts
+  '("Symbola"
+    "Apple Symbols"
+    "Segoe UI Symbol"
+    "Arial Unicode MS"
+    "DejaVu Sans"
+    "Noto Sans Symbols2"
+    "FreeSans"
+    "GNU Unifont")
+  "Priority list of fonts known to support Braille Unicode (U+2800–U+28FF).")
+
+(defun verdict--detect-braille-font ()
+  "Return the first font from `verdict--braille-fonts' available on this system."
+  (let ((available (font-family-list)))
+    (seq-find (lambda (font) (member font available))
+              verdict--braille-fonts)))
+
+(defvar verdict--auto-braille-font (verdict--detect-braille-font)
+  "First Braille-capable font detected at load time, or nil.")
+
 ;;; Customization
 
-(defcustom verdict-icon-height 1.4
+(defcustom verdict-icon-font verdict--auto-braille-font
+  "Font family to use for verdict status icons.
+When non-nil, icons are rendered with `:family FONT' in their face spec.
+Defaults to the first font from `verdict--braille-fonts' found in
+`font-family-list', or nil if none is available."
+  :type '(choice (const :tag "Default" nil) string)
+  :group 'verdict)
+
+(defcustom verdict-spinner-style (if verdict--auto-braille-font 'braille 'ascii)
+  "Spinner style to use while tests are running.
+`braille' uses Unicode Braille characters for a smooth animation.
+`ascii'   uses plain ASCII characters (|, /, -, \\\\).
+Defaults to `braille' if a suitable font was auto-detected at load time."
+  :type '(choice (const :tag "Braille" braille) (const :tag "ASCII" ascii))
+  :group 'verdict)
+
+(defcustom verdict-icon-height 1.2
   "Relative height of verdict status icons, as a float (1.0 = normal size)."
   :type 'number
   :group 'verdict)
@@ -80,8 +118,17 @@ nil   — prompt before each run, then offer to remember the answer."
 (defvar verdict--render-timer nil
   "Debounce timer for rendering.")
 
-(defconst verdict--spinner-frames ["|" "/" "-" "\\"]
-  "Animation frames for the running spinner.")
+(defconst verdict--spinner-frames-ascii ["|" "/" "-" "\\"]
+  "ASCII animation frames for the running spinner.")
+
+(defconst verdict--spinner-frames-braille ["⣾" "⣽" "⣻" "⢿" "⡿" "⣟" "⣯" "⣷"]
+  "Braille animation frames for the running spinner.")
+
+(defun verdict--spinner-frames ()
+  "Return the spinner frame vector for the current `verdict-spinner-style'."
+  (if (eq verdict-spinner-style 'braille)
+      verdict--spinner-frames-braille
+    verdict--spinner-frames-ascii))
 
 (defvar verdict--spinner-frame 0
   "Current frame index into `verdict--spinner-frames'.")
@@ -129,7 +176,7 @@ nil   — prompt before each run, then offer to remember the answer."
   "Return 2-char propertized icon string for leaf node with STATUS."
   (let* ((status (verdict--effective-status status))
          (icon (pcase status
-                 ('running (aref verdict--spinner-frames verdict--spinner-frame))
+                 ('running (aref (verdict--spinner-frames) verdict--spinner-frame))
                  ('passed  verdict-icon-passed)
                  ('failed  verdict-icon-failed)
                  ('error   verdict-icon-error)
@@ -144,9 +191,12 @@ nil   — prompt before each run, then offer to remember the answer."
 
 (defun verdict--render-icon (status icon-char)
   "Return propertized group icon string for ICON-CHAR."
-  (let ((face (verdict--status-face (verdict--effective-status status))))
+  (let* ((face (verdict--status-face (verdict--effective-status status)))
+         (icon-face (if verdict-icon-font
+                        `(:inherit ,face :family ,verdict-icon-font)
+                      `(:inherit ,face))))
     (concat
-     (propertize icon-char 'face `(:inherit ,face) 'display `(height ,verdict-icon-height))
+     (propertize icon-char 'face icon-face 'display `(height ,verdict-icon-height))
      (propertize " "  'face `(:inherit ,face)))))
 
 (defun verdict--render-message (severity message)
@@ -323,7 +373,7 @@ If the node has log output or an error message, display it in *verdict-output* f
 (defun verdict--spinner-tick ()
   "Advance spinner frame and schedule a render."
   (setq verdict--spinner-frame
-        (mod (1+ verdict--spinner-frame) (length verdict--spinner-frames)))
+        (mod (1+ verdict--spinner-frame) (length (verdict--spinner-frames))))
   (verdict--schedule-render))
 
 (defun verdict--spinner-start ()
