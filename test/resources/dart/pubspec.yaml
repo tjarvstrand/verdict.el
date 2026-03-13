@@ -1,0 +1,8 @@
+name: verdict
+version: 1.0.0
+
+environment:
+  sdk: ^3.10.8
+
+dev_dependencies:
+  test:
