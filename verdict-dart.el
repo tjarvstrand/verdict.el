@@ -8,24 +8,6 @@
 
 ;;; Internal State
 
-(defvar verdict-dart--proc nil
-  "Active dart test process.")
-
-(defvar verdict-dart--partial ""
-  "Partial line buffer for process output.")
-
-(defvar verdict-dart--last-scope nil
-  "Last run scope: :at-point :file :project.")
-
-(defvar verdict-dart--last-file nil
-  "Last run file path.")
-
-(defvar verdict-dart--last-name nil
-  "Last run test name.")
-
-(defvar verdict-dart--last-debug nil
-  "Last run debug flag.")
-
 (defvar verdict-dart--group-names (make-hash-table)
   "Map of dart group ID (integer) → full name string.")
 
@@ -143,12 +125,9 @@ Returns (:kind KIND :name NAME :line LINE) or nil."
   "Build the dart test command for SCOPE, FILE, NAME, DEBUG."
   (when debug
     (error "verdict-dart: debug not yet supported"))
-  (let ((cmd (list "dart" "test" "-r" "json")))
-    (when name
-      (setq cmd (append cmd (list "--plain-name" name))))
-    (when file
-      (setq cmd (append cmd (list file))))
-    cmd))
+  (let ((name-args (when name (list "--plain-name" name)))
+        (file-args (when file (list file))))
+    (append (list "dart" "test" "-r" "json") name-args file-args)))
 
 ;;; Helpers
 
@@ -178,9 +157,8 @@ Skips root groups (those with empty names)."
 
 ;;; JSON → Event Translation
 
-(defun verdict-dart--handle-line (line &optional file)
-  "Parse one JSON LINE from `dart test -r json' and dispatch to `verdict-event'.
-FILE is the test file associated with this process, used for error attribution."
+(defun verdict-dart--handle-line (line)
+  "Parse one JSON LINE from `dart test -r json' and dispatch to `verdict-event'."
   (condition-case err
       (unless (string-empty-p line)
         (let* ((ev   (json-parse-string line :object-type 'hash-table :array-type 'list :null-object nil))
@@ -283,116 +261,37 @@ FILE is the test file associated with this process, used for error attribution."
 
             (_ nil))))
     (error
-     (let ((suite-id (and file (gethash file verdict-dart--file-suite-ids))))
-       (if suite-id
-           (verdict-event (list :type     :log
-                                :severity 'error
-                                :id       suite-id
-                                :message  line))
-         (message "verdict-dart: error parsing line: %s\n%s" line (error-message-string err)))))))
+     (message "verdict-dart: error parsing line: %s\n%s" line (error-message-string err)))))
 
-;;; Process Infrastructure
+;;; Command Function
 
-(defun verdict-dart--filter (proc chunk)
-  "Process filter: accumulate CHUNK and handle complete lines."
-  (let* ((file  (process-get proc :verdict-file))
-         (full  (concat verdict-dart--partial chunk))
-         (parts (split-string full "\n"))
-         (rest  (car (last parts))))
-    (setq verdict-dart--partial rest)
-    (dolist (line (butlast parts))
-      (verdict-dart--handle-line line file))))
-
-(defun verdict-dart--sentinel (proc event)
-  "Process sentinel: flush partial buffer and finalize state."
-  (let ((file (process-get proc :verdict-file)))
-    (unless (string-empty-p verdict-dart--partial)
-      (verdict-dart--handle-line verdict-dart--partial file)
-      (setq verdict-dart--partial "")))
-  (when (eq proc verdict-dart--proc)
-    (verdict-stop))
-  (message "verdict: process %s" (string-trim event)))
-
-;;; Internal Run
-
-(defun verdict-dart--run (scope file name debug)
-  "Start a dart test run for SCOPE with FILE, NAME, DEBUG."
-  (setq verdict-dart--last-scope scope
-        verdict-dart--last-file  file
-        verdict-dart--last-name  name
-        verdict-dart--last-debug debug)
-  (when (process-live-p verdict-dart--proc)
-    (kill-process verdict-dart--proc))
-  (setq verdict-dart--partial ""
-        verdict-dart--group-names (make-hash-table)
+(defun verdict-dart--command-fn (scope)
+  "Build dart test command for SCOPE. Returns plist with :command :directory :name.
+Called in user's original buffer context so buffer-file-name and point are available."
+  (setq verdict-dart--group-names    (make-hash-table)
         verdict-dart--file-suite-ids (make-hash-table :test #'equal)
-        verdict-dart--loading-tests (make-hash-table :test #'equal))
-  (verdict-start scope name)
+        verdict-dart--loading-tests  (make-hash-table :test #'equal))
   (let* ((project-root (verdict-dart--project-root))
-         (cmd          (verdict-dart--command scope file name project-root debug))
-         (default-directory project-root))
-    (setq verdict-dart--proc
-          (make-process
-           :name              "verdict-dart"
-           :command           cmd
-           :connection-type   'pty
-           :filter            #'verdict-dart--filter
-           :sentinel          #'verdict-dart--sentinel
-           :noquery           t))
-    (process-put verdict-dart--proc :verdict-file file)
-    (message "verdict: running %s" (string-join cmd " "))
-    (message "verdict: in %s" project-root)))
+         (file buffer-file-name)
+         (name (pcase scope
+                 (:at-point (plist-get (or (verdict-dart--test-at-point)
+                                           (error "No test found at point"))
+                                       :name))
+                 (:group    (plist-get (car (or (verdict-dart--enclosing-calls)
+                                                (error "No group or test found at point")))
+                                       :name))
+                 (:file     (file-name-nondirectory file))
+                 (:project  nil)))
+         (test-name (when (memq scope '(:at-point :group)) name)))
+    (list :command   (verdict-dart--command scope file test-name project-root nil)
+          :directory project-root
+          :name      name)))
 
-;;; Public Commands
+;;; Backend Registration
 
-(defun verdict-run-at-point ()
-  "Run the test at point."
-  (interactive)
-  (let ((info (or (verdict-dart--test-at-point)
-                  (error "No test found at point"))))
-    (verdict-dart--run :at-point
-                       (plist-get info :file)
-                       (plist-get info :name)
-                       nil)))
+(verdict-register-backend #'verdict-dart--command-fn #'verdict-dart--handle-line)
 
-(defun verdict-run-file ()
-  "Run all tests in the current file."
-  (interactive)
-  (verdict-dart--run :file buffer-file-name nil nil))
-
-(defun verdict-run-project ()
-  "Run all tests in the project."
-  (interactive)
-  (verdict-dart--run :project nil nil nil))
-
-(defun verdict-debug-at-point ()
-  "Debug the test at point."
-  (interactive)
-  (let ((info (or (verdict-dart--test-at-point)
-                  (error "No test found at point"))))
-    (verdict-dart--run :at-point
-                       (plist-get info :file)
-                       (plist-get info :name)
-                       t)))
-
-(defun verdict-rerun ()
-  "Rerun the last test run."
-  (interactive)
-  (unless verdict-dart--last-scope
-    (error "No previous verdict run to repeat"))
-  (verdict-dart--run verdict-dart--last-scope
-                     verdict-dart--last-file
-                     verdict-dart--last-name
-                     verdict-dart--last-debug))
-
-;;; Keybindings
-
-(with-eval-after-load 'dart-ts-mode
-  (define-key dart-ts-mode-map (kbd "C-c v t") #'verdict-run-at-point)
-  (define-key dart-ts-mode-map (kbd "C-c v f") #'verdict-run-file)
-  (define-key dart-ts-mode-map (kbd "C-c v p") #'verdict-run-project)
-  (define-key dart-ts-mode-map (kbd "C-c v d") #'verdict-debug-at-point)
-  (define-key dart-ts-mode-map (kbd "C-c v r") #'verdict-rerun))
+(add-hook 'dart-ts-mode-hook #'verdict-mode)
 
 (provide 'verdict-dart)
 ;;; verdict-dart.el ends here

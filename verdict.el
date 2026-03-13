@@ -145,6 +145,30 @@ nil   — prompt before each run, then offer to remember the answer."
 (defvar verdict-log-events nil
   "Whether to print runner events to the messages buffer")
 
+;;; Backend Registration
+
+(defvar verdict--backend nil
+  "Plist describing the active backend.
+Keys:
+  :command-fn   — function (scope) → plist with :command :directory :name
+  :line-handler — function (line) called per complete output line")
+
+(defun verdict-register-backend (command-fn line-handler)
+  "Register COMMAND-FN and LINE-HANDLER as the active verdict backend."
+  (setq verdict--backend (list :command-fn   command-fn
+                               :line-handler line-handler)))
+
+;;; Process State
+
+(defvar verdict--proc nil
+  "Active test process.")
+
+(defvar verdict--partial ""
+  "Partial line buffer for streaming process output.")
+
+(defvar verdict--last-scope nil
+  "Scope of the last run, for rerun.")
+
 ;;; Status Aggregation
 
 (defconst verdict--status-severity
@@ -495,6 +519,82 @@ EVENT must have a :type field with a keyword value."
      (message "verdict: test run complete")))
 
   (verdict--schedule-render))
+
+;;; Generic Process Infrastructure
+
+(defun verdict--filter (_proc chunk)
+  "Accumulate CHUNK into line buffer; call backend line-handler per complete line."
+  (let* ((handler (plist-get verdict--backend :line-handler))
+         (full    (concat verdict--partial chunk))
+         (parts   (split-string full "\n"))
+         (rest    (car (last parts))))
+    (setq verdict--partial rest)
+    (dolist (line (butlast parts))
+      (funcall handler line))))
+
+(defun verdict--sentinel (proc event)
+  "Flush partial buffer and finalize state when process exits."
+  (let ((handler (plist-get verdict--backend :line-handler)))
+    (unless (string-empty-p verdict--partial)
+      (funcall handler verdict--partial)
+      (setq verdict--partial "")))
+  (when (eq proc verdict--proc)
+    (verdict-stop))
+  (message "verdict: process %s" (string-trim event)))
+
+(defun verdict--run (scope)
+  "Run tests for SCOPE using the registered backend."
+  (unless verdict--backend
+    (error "No verdict backend registered"))
+  (setq verdict--last-scope scope)
+  (when (process-live-p verdict--proc)
+    (kill-process verdict--proc))
+  (setq verdict--partial "")
+  (let* ((result    (funcall (plist-get verdict--backend :command-fn) scope))
+         (cmd       (plist-get result :command))
+         (dir       (or (plist-get result :directory) default-directory))
+         (name      (plist-get result :name))
+         (default-directory dir))
+    (verdict-start scope name)
+    (setq verdict--proc
+          (make-process
+           :name            "verdict"
+           :command         cmd
+           :connection-type 'pty
+           :filter          #'verdict--filter
+           :sentinel        #'verdict--sentinel
+           :noquery         t))
+    (message "verdict: running %s" (string-join cmd " "))
+    (message "verdict: in %s" dir)))
+
+;;; Public Run Commands
+
+(defun verdict-run-at-point () (interactive) (verdict--run :at-point))
+(defun verdict-run-group ()    (interactive) (verdict--run :group))
+(defun verdict-run-file ()     (interactive) (verdict--run :file))
+(defun verdict-run-project ()  (interactive) (verdict--run :project))
+
+(defun verdict-rerun ()
+  "Rerun the last test run."
+  (interactive)
+  (unless verdict--last-scope (error "No previous verdict run to repeat"))
+  (verdict--run verdict--last-scope))
+
+;;; Minor Mode
+
+(defvar verdict-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "C-c v t") #'verdict-run-at-point)
+    (define-key map (kbd "C-c v g") #'verdict-run-group)
+    (define-key map (kbd "C-c v f") #'verdict-run-file)
+    (define-key map (kbd "C-c v p") #'verdict-run-project)
+    (define-key map (kbd "C-c v r") #'verdict-rerun)
+    map))
+
+(define-minor-mode verdict-mode
+  "Minor mode providing verdict test runner keybindings."
+  :lighter " verdict"
+  :keymap verdict-mode-map)
 
 ;;; Debug
 
