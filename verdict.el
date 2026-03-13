@@ -8,10 +8,9 @@
 (require 's)
 
 ;; TODO
-;; - Simplify code
 ;; - Tests
-;; - Figure out actions for click, RET, etc.
-;; - Inhibit same window then displaying buffer for the first time
+;; - Close output window when starting new test run
+;; - [Dart] Add links to stack traces in output
 
 ;;; Faces
 
@@ -166,8 +165,8 @@ Keys:
 (defvar verdict--partial ""
   "Partial line buffer for streaming process output.")
 
-(defvar verdict--last-scope nil
-  "Scope of the last run, for rerun.")
+(defvar verdict--last-command nil
+  "Command plist from the last run (:command :directory :name), for rerun.")
 
 ;;; Status Aggregation
 
@@ -542,20 +541,16 @@ EVENT must have a :type field with a keyword value."
     (verdict-stop))
   (message "verdict: process %s" (string-trim event)))
 
-(defun verdict--run (scope)
-  "Run tests for SCOPE using the registered backend."
-  (unless verdict--backend
-    (error "No verdict backend registered"))
-  (setq verdict--last-scope scope)
+(defun verdict--launch (spec)
+  "Launch a test process from SPEC plist (:command :directory :name)."
   (when (process-live-p verdict--proc)
     (kill-process verdict--proc))
   (setq verdict--partial "")
-  (let* ((result    (funcall (plist-get verdict--backend :command-fn) scope))
-         (cmd       (plist-get result :command))
-         (dir       (or (plist-get result :directory) default-directory))
-         (name      (plist-get result :name))
+  (let* ((cmd  (plist-get spec :command))
+         (dir  (or (plist-get spec :directory) default-directory))
+         (name (plist-get spec :name))
          (default-directory dir))
-    (verdict-start scope name)
+    (verdict-start nil name)
     (setq verdict--proc
           (make-process
            :name            "verdict"
@@ -567,6 +562,13 @@ EVENT must have a :type field with a keyword value."
     (message "verdict: running %s" (string-join cmd " "))
     (message "verdict: in %s" dir)))
 
+(defun verdict--run (scope)
+  "Run tests for SCOPE using the registered backend."
+  (unless verdict--backend
+    (error "No verdict backend registered"))
+  (setq verdict--last-command (funcall (plist-get verdict--backend :command-fn) scope))
+  (verdict--launch verdict--last-command))
+
 ;;; Public Run Commands
 
 (defun verdict-run-at-point () (interactive) (verdict--run :at-point))
@@ -577,8 +579,8 @@ EVENT must have a :type field with a keyword value."
 (defun verdict-rerun ()
   "Rerun the last test run."
   (interactive)
-  (unless verdict--last-scope (error "No previous verdict run to repeat"))
-  (verdict--run verdict--last-scope))
+  (unless verdict--last-command (error "No previous verdict run to repeat"))
+  (verdict--launch verdict--last-command))
 
 ;;; Minor Mode
 

@@ -282,8 +282,9 @@ Called in user's original buffer context so buffer-file-name and point are avail
                                        :name))
                  (:file     (file-name-nondirectory file))
                  (:project  nil)))
+         (test-file (unless (eq scope :project) file))
          (test-name (when (memq scope '(:at-point :group)) name)))
-    (list :command   (verdict-dart--command scope file test-name project-root nil)
+    (list :command   (verdict-dart--command scope test-file test-name project-root nil)
           :directory project-root
           :name      name)))
 
