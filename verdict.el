@@ -191,14 +191,9 @@ Keys:
     ('stopped 'verdict-stopped-face)
     (_        'default)))
 
-(defun verdict--effective-status (status)
-  "Return STATUS, treating nil as 'running when a run is active."
-  (if (and (null status) verdict--spinner-timer) 'running status))
-
 (defun verdict--leaf-icon (status)
   "Return 2-char propertized icon string for leaf node with STATUS."
-  (let* ((status (verdict--effective-status status))
-         (icon (pcase status
+  (let* ((icon (pcase status
                  ('running (aref (verdict--spinner-frames) verdict--spinner-frame))
                  ('passed  verdict-icon-passed)
                  ('failed  verdict-icon-failed)
@@ -214,7 +209,7 @@ Keys:
 
 (defun verdict--render-icon (status icon-char)
   "Return propertized group icon string for ICON-CHAR."
-  (let* ((face (verdict--status-face (verdict--effective-status status)))
+  (let* ((face (verdict--status-face status))
          (icon-face (if verdict-icon-font
                         `(:inherit ,face :family ,verdict-icon-font)
                       `(:inherit ,face))))
@@ -483,6 +478,7 @@ EVENT must have a :type field with a keyword value."
             (parent-id (plist-get event :parent-id))
             (node      (list :id       id
                              :label    (plist-get event :name)
+                             :status   'running
                              :file     (plist-get event :file)
                              :line     (plist-get event :line)
                              :children nil)))
