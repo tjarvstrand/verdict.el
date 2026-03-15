@@ -290,7 +290,7 @@ Called in user's original buffer context so buffer-file-name and point are avail
 
 ;;; Backend Registration
 
-(verdict-register-backend #'verdict-dart--command-fn #'verdict-dart--handle-line)
+(verdict-register-backend 'dart-ts-mode #'verdict-dart--command-fn #'verdict-dart--handle-line)
 
 (add-hook 'dart-ts-mode-hook #'verdict-mode)
 

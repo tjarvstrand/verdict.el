@@ -146,16 +146,38 @@ nil   — prompt before each run, then offer to remember the answer."
 
 ;;; Backend Registration
 
-(defvar verdict--backend nil
-  "Plist describing the active backend.
-Keys:
+(defvar verdict--backends nil
+  "Alist of (PREDICATE . BACKEND-PLIST) entries, most recently registered first.
+PREDICATE is one of:
+  - a major-mode symbol  — matched with `derived-mode-p'
+  - a regexp string      — matched against `buffer-name'
+  - a function           — called with no args; non-nil means match
+BACKEND-PLIST keys:
   :command-fn   — function (scope) → plist with :command :directory :name
   :line-handler — function (line) called per complete output line")
 
-(defun verdict-register-backend (command-fn line-handler)
-  "Register COMMAND-FN and LINE-HANDLER as the active verdict backend."
-  (setq verdict--backend (list :command-fn   command-fn
-                               :line-handler line-handler)))
+(defun verdict--match-predicate (predicate)
+  "Return non-nil if PREDICATE matches the current buffer."
+  (cond
+   ((symbolp predicate)   (derived-mode-p predicate))
+   ((stringp predicate)   (string-match-p predicate (buffer-name)))
+   ((functionp predicate) (funcall predicate))
+   (t (error "Invalid verdict backend predicate: %S" predicate))))
+
+(defun verdict--active-backend ()
+  "Return the first registered backend whose predicate matches the current buffer."
+  (or (cdr (seq-find (lambda (entry)
+                       (verdict--match-predicate (car entry)))
+                     verdict--backends))
+      (error "No verdict backend matches buffer %s (mode: %s)"
+             (buffer-name) major-mode)))
+
+(defun verdict-register-backend (predicate command-fn line-handler)
+  "Register a backend with PREDICATE, COMMAND-FN, and LINE-HANDLER.
+See `verdict--backends' for the supported predicate forms."
+  (add-to-list 'verdict--backends
+               (cons predicate (list :command-fn   command-fn
+                                     :line-handler line-handler))))
 
 ;;; Process State
 
@@ -164,6 +186,9 @@ Keys:
 
 (defvar verdict--partial ""
   "Partial line buffer for streaming process output.")
+
+(defvar verdict--proc-backend nil
+  "Backend plist for the currently running (or last completed) process.")
 
 (defvar verdict--last-command nil
   "Command plist from the last run (:command :directory :name), for rerun.")
@@ -519,7 +544,7 @@ EVENT must have a :type field with a keyword value."
 
 (defun verdict--filter (_proc chunk)
   "Accumulate CHUNK into line buffer; call backend line-handler per complete line."
-  (let* ((handler (plist-get verdict--backend :line-handler))
+  (let* ((handler (plist-get verdict--proc-backend :line-handler))
          (full    (concat verdict--partial chunk))
          (parts   (split-string full "\n"))
          (rest    (car (last parts))))
@@ -529,7 +554,7 @@ EVENT must have a :type field with a keyword value."
 
 (defun verdict--sentinel (proc event)
   "Flush partial buffer and finalize state when process exits."
-  (let ((handler (plist-get verdict--backend :line-handler)))
+  (let ((handler (plist-get verdict--proc-backend :line-handler)))
     (unless (string-empty-p verdict--partial)
       (funcall handler verdict--partial)
       (setq verdict--partial "")))
@@ -559,11 +584,11 @@ EVENT must have a :type field with a keyword value."
     (message "verdict: in %s" dir)))
 
 (defun verdict--run (scope)
-  "Run tests for SCOPE using the registered backend."
-  (unless verdict--backend
-    (error "No verdict backend registered"))
-  (setq verdict--last-command (funcall (plist-get verdict--backend :command-fn) scope))
-  (verdict--launch verdict--last-command))
+  "Run tests for SCOPE using the backend matching the current buffer."
+  (let ((backend (verdict--active-backend)))
+    (setq verdict--proc-backend backend)
+    (setq verdict--last-command (funcall (plist-get backend :command-fn) scope))
+    (verdict--launch verdict--last-command)))
 
 ;;; Public Run Commands
 

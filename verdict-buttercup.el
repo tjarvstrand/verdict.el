@@ -176,9 +176,10 @@
 ;;; Setup
 
 (defun verdict-buttercup-setup ()
-  "Register the buttercup backend with verdict."
+  "Register the buttercup backend with verdict for `emacs-lisp-mode' buffers."
   (interactive)
-  (verdict-register-backend #'verdict-buttercup--command-fn
+  (verdict-register-backend 'emacs-lisp-mode
+                             #'verdict-buttercup--command-fn
                              #'verdict-buttercup--line-handler))
 
 (provide 'verdict-buttercup)
