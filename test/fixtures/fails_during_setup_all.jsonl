@@ -1,0 +1,12 @@
+{"protocolVersion":"0.1.1","runnerVersion":"1.30.0","pid":74433,"type":"start","time":0}
+{"suite":{"id":0,"platform":"vm","path":"test/fails_during_setup_all.dart"},"type":"suite","time":0}
+{"test":{"id":1,"name":"loading test/fails_during_setup_all.dart","suiteID":0,"groupIDs":[],"metadata":{"skip":false,"skipReason":null},"line":null,"column":null,"url":null},"type":"testStart","time":0}
+{"count":1,"time":3,"type":"allSuites"}
+{"testID":1,"result":"success","skipped":false,"hidden":true,"type":"testDone","time":168}
+{"group":{"id":2,"suiteID":0,"parentID":null,"name":"","metadata":{"skip":false,"skipReason":null},"testCount":0,"line":null,"column":null,"url":null},"type":"group","time":169}
+{"test":{"id":3,"name":"(setUpAll)","suiteID":0,"groupIDs":[2],"metadata":{"skip":false,"skipReason":null},"line":4,"column":3,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/fails_during_setup_all.dart"},"type":"testStart","time":169}
+{"testID":3,"error":"Exception","stackTrace":"test/fails_during_setup_all.dart 5:5  main.<fn>\n","isFailure":false,"type":"error","time":177}
+{"testID":3,"result":"error","skipped":false,"hidden":false,"type":"testDone","time":178}
+{"test":{"id":4,"name":"(tearDownAll)","suiteID":0,"groupIDs":[2],"metadata":{"skip":false,"skipReason":null},"line":null,"column":null,"url":null},"type":"testStart","time":178}
+{"testID":4,"result":"success","skipped":false,"hidden":true,"type":"testDone","time":178}
+{"success":false,"type":"done","time":182}

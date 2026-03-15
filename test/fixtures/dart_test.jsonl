@@ -1,0 +1,79 @@
+{"protocolVersion":"0.1.1","runnerVersion":"1.30.0","pid":74421,"type":"start","time":0}
+{"suite":{"id":0,"platform":"vm","path":"test/dart_test.dart"},"type":"suite","time":0}
+{"test":{"id":1,"name":"loading test/dart_test.dart","suiteID":0,"groupIDs":[],"metadata":{"skip":false,"skipReason":null},"line":null,"column":null,"url":null},"type":"testStart","time":0}
+{"count":1,"time":3,"type":"allSuites"}
+{"testID":1,"messageType":"print","message":"log from main","type":"print","time":207}
+{"testID":1,"messageType":"print","message":"log from group body","type":"print","time":211}
+{"testID":1,"result":"success","skipped":false,"hidden":true,"type":"testDone","time":258}
+{"group":{"id":2,"suiteID":0,"parentID":null,"name":"","metadata":{"skip":false,"skipReason":null},"testCount":18,"line":null,"column":null,"url":null},"type":"group","time":259}
+{"test":{"id":3,"name":"a top-level test that succeeds","suiteID":0,"groupIDs":[2],"metadata":{"skip":false,"skipReason":null},"line":6,"column":3,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"testStart","time":259}
+{"testID":3,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":265}
+{"test":{"id":4,"name":"a top-level test that fails","suiteID":0,"groupIDs":[2],"metadata":{"skip":false,"skipReason":null},"line":7,"column":3,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"testStart","time":265}
+{"testID":4,"error":"Exception","stackTrace":"test/dart_test.dart 7:45  main.<fn>\n","isFailure":false,"type":"error","time":269}
+{"testID":4,"result":"error","skipped":false,"hidden":false,"type":"testDone","time":269}
+{"group":{"id":5,"suiteID":0,"parentID":2,"name":"A group of tests that fails during setUp","metadata":{"skip":false,"skipReason":null},"testCount":1,"line":9,"column":3,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"group","time":269}
+{"test":{"id":6,"name":"A group of tests that fails during setUp First Test","suiteID":0,"groupIDs":[2,5],"metadata":{"skip":false,"skipReason":null},"line":14,"column":5,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"testStart","time":269}
+{"testID":6,"error":"Exception","stackTrace":"test/dart_test.dart 11:7  main.<fn>.<fn>\n","isFailure":false,"type":"error","time":270}
+{"testID":6,"result":"error","skipped":false,"hidden":false,"type":"testDone","time":270}
+{"group":{"id":7,"suiteID":0,"parentID":2,"name":"A group of tests that fails during setUpAll","metadata":{"skip":false,"skipReason":null},"testCount":1,"line":17,"column":3,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"group","time":270}
+{"test":{"id":8,"name":"A group of tests that fails during setUpAll (setUpAll)","suiteID":0,"groupIDs":[2,7],"metadata":{"skip":false,"skipReason":null},"line":18,"column":5,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"testStart","time":270}
+{"testID":8,"error":"Exception","stackTrace":"test/dart_test.dart 19:7  main.<fn>.<fn>\n","isFailure":false,"type":"error","time":271}
+{"testID":8,"result":"error","skipped":false,"hidden":false,"type":"testDone","time":271}
+{"test":{"id":9,"name":"A group of tests that fails during setUpAll (tearDownAll)","suiteID":0,"groupIDs":[2,7],"metadata":{"skip":false,"skipReason":null},"line":null,"column":null,"url":null},"type":"testStart","time":271}
+{"testID":9,"result":"success","skipped":false,"hidden":true,"type":"testDone","time":271}
+{"group":{"id":10,"suiteID":0,"parentID":2,"name":"A group of tests that fails during setUpAll","metadata":{"skip":false,"skipReason":null},"testCount":1,"line":25,"column":3,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"group","time":272}
+{"test":{"id":11,"name":"A group of tests that fails during setUpAll (setUpAll)","suiteID":0,"groupIDs":[2,10],"metadata":{"skip":false,"skipReason":null},"line":26,"column":5,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"testStart","time":272}
+{"testID":11,"error":"Exception","stackTrace":"test/dart_test.dart 27:7  main.<fn>.<fn>\n","isFailure":false,"type":"error","time":272}
+{"testID":11,"result":"error","skipped":false,"hidden":false,"type":"testDone","time":272}
+{"test":{"id":12,"name":"A group of tests that fails during setUpAll (tearDownAll)","suiteID":0,"groupIDs":[2,10],"metadata":{"skip":false,"skipReason":null},"line":null,"column":null,"url":null},"type":"testStart","time":272}
+{"testID":12,"result":"success","skipped":false,"hidden":true,"type":"testDone","time":273}
+{"group":{"id":13,"suiteID":0,"parentID":2,"name":"A group","metadata":{"skip":false,"skipReason":null},"testCount":3,"line":33,"column":3,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"group","time":273}
+{"test":{"id":14,"name":"A group a grouped test that succeeds","suiteID":0,"groupIDs":[2,13],"metadata":{"skip":false,"skipReason":null},"line":34,"column":5,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"testStart","time":273}
+{"testID":14,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":273}
+{"test":{"id":15,"name":"A group a grouped test that fails","suiteID":0,"groupIDs":[2,13],"metadata":{"skip":false,"skipReason":null},"line":35,"column":5,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"testStart","time":273}
+{"testID":15,"error":"Exception","stackTrace":"test/dart_test.dart 35:45  main.<fn>.<fn>\n","isFailure":false,"type":"error","time":274}
+{"testID":15,"result":"error","skipped":false,"hidden":false,"type":"testDone","time":274}
+{"test":{"id":16,"name":"A group a grouped test with output","suiteID":0,"groupIDs":[2,13],"metadata":{"skip":false,"skipReason":null},"line":36,"column":5,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"testStart","time":274}
+{"testID":16,"messageType":"print","message":"log from grouped test","type":"print","time":274}
+{"testID":16,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":274}
+{"group":{"id":17,"suiteID":0,"parentID":2,"name":"A group with setUp log","metadata":{"skip":false,"skipReason":null},"testCount":1,"line":41,"column":3,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"group","time":274}
+{"test":{"id":18,"name":"A group with setUp log test with setUp log","suiteID":0,"groupIDs":[2,17],"metadata":{"skip":false,"skipReason":null},"line":46,"column":5,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"testStart","time":275}
+{"testID":18,"messageType":"print","message":"log from setUp","type":"print","time":275}
+{"testID":18,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":275}
+{"group":{"id":19,"suiteID":0,"parentID":2,"name":"A group with body log","metadata":{"skip":false,"skipReason":null},"testCount":1,"line":49,"column":3,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"group","time":275}
+{"test":{"id":20,"name":"A group with body log a test in body-log group","suiteID":0,"groupIDs":[2,19],"metadata":{"skip":false,"skipReason":null},"line":52,"column":5,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"testStart","time":275}
+{"testID":20,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":275}
+{"group":{"id":21,"suiteID":0,"parentID":2,"name":"A group with setUpAll log","metadata":{"skip":false,"skipReason":null},"testCount":2,"line":55,"column":3,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"group","time":275}
+{"test":{"id":22,"name":"A group with setUpAll log (setUpAll)","suiteID":0,"groupIDs":[2,21],"metadata":{"skip":false,"skipReason":null},"line":56,"column":5,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"testStart","time":275}
+{"testID":22,"messageType":"print","message":"log from setUpAll","type":"print","time":276}
+{"testID":22,"result":"success","skipped":false,"hidden":true,"type":"testDone","time":276}
+{"test":{"id":23,"name":"A group with setUpAll log first test after setUpAll","suiteID":0,"groupIDs":[2,21],"metadata":{"skip":false,"skipReason":null},"line":60,"column":5,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"testStart","time":276}
+{"testID":23,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":276}
+{"test":{"id":24,"name":"A group with setUpAll log second test after setUpAll","suiteID":0,"groupIDs":[2,21],"metadata":{"skip":false,"skipReason":null},"line":61,"column":5,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"testStart","time":276}
+{"testID":24,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":276}
+{"test":{"id":25,"name":"A group with setUpAll log (tearDownAll)","suiteID":0,"groupIDs":[2,21],"metadata":{"skip":false,"skipReason":null},"line":null,"column":null,"url":null},"type":"testStart","time":276}
+{"testID":25,"result":"success","skipped":false,"hidden":true,"type":"testDone","time":277}
+{"group":{"id":26,"suiteID":0,"parentID":2,"name":"A group with tearDownAll log","metadata":{"skip":false,"skipReason":null},"testCount":2,"line":64,"column":3,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"group","time":277}
+{"test":{"id":27,"name":"A group with tearDownAll log first test before tearDownAll","suiteID":0,"groupIDs":[2,26],"metadata":{"skip":false,"skipReason":null},"line":69,"column":5,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"testStart","time":277}
+{"testID":27,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":277}
+{"test":{"id":28,"name":"A group with tearDownAll log last test before tearDownAll","suiteID":0,"groupIDs":[2,26],"metadata":{"skip":false,"skipReason":null},"line":70,"column":5,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"testStart","time":277}
+{"testID":28,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":277}
+{"test":{"id":29,"name":"A group with tearDownAll log (tearDownAll)","suiteID":0,"groupIDs":[2,26],"metadata":{"skip":false,"skipReason":null},"line":65,"column":5,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"testStart","time":277}
+{"testID":29,"messageType":"print","message":"log from tearDownAll","type":"print","time":278}
+{"testID":29,"result":"success","skipped":false,"hidden":true,"type":"testDone","time":278}
+{"group":{"id":30,"suiteID":0,"parentID":2,"name":"A group with tearDown log","metadata":{"skip":false,"skipReason":null},"testCount":1,"line":73,"column":3,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"group","time":278}
+{"test":{"id":31,"name":"A group with tearDown log a test with tearDown log","suiteID":0,"groupIDs":[2,30],"metadata":{"skip":false,"skipReason":null},"line":78,"column":5,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"testStart","time":278}
+{"testID":31,"messageType":"print","message":"log from tearDown","type":"print","time":278}
+{"testID":31,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":278}
+{"test":{"id":32,"name":"a skipped test","suiteID":0,"groupIDs":[2],"metadata":{"skip":true,"skipReason":"not yet implemented"},"line":81,"column":3,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"testStart","time":279}
+{"testID":32,"messageType":"skip","message":"Skip: not yet implemented","type":"print","time":279}
+{"testID":32,"result":"success","skipped":true,"hidden":false,"type":"testDone","time":279}
+{"test":{"id":33,"name":"a test with print output","suiteID":0,"groupIDs":[2],"metadata":{"skip":false,"skipReason":null},"line":83,"column":3,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"testStart","time":279}
+{"testID":33,"messageType":"print","message":"hello from dart","type":"print","time":279}
+{"testID":33,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":279}
+{"group":{"id":34,"suiteID":0,"parentID":2,"name":"Outer group","metadata":{"skip":false,"skipReason":null},"testCount":1,"line":87,"column":3,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"group","time":279}
+{"group":{"id":35,"suiteID":0,"parentID":34,"name":"Outer group Inner group","metadata":{"skip":false,"skipReason":null},"testCount":1,"line":88,"column":5,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"group","time":279}
+{"test":{"id":36,"name":"Outer group Inner group a nested test","suiteID":0,"groupIDs":[2,34,35],"metadata":{"skip":false,"skipReason":null},"line":89,"column":7,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/dart_test.dart"},"type":"testStart","time":279}
+{"testID":36,"messageType":"print","message":"log from nested test","type":"print","time":279}
+{"testID":36,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":279}
+{"success":false,"type":"done","time":283}

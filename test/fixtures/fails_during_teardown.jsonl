@@ -1,0 +1,10 @@
+{"protocolVersion":"0.1.1","runnerVersion":"1.30.0","pid":74441,"type":"start","time":0}
+{"suite":{"id":0,"platform":"vm","path":"test/fails_during_teardown.dart"},"type":"suite","time":0}
+{"test":{"id":1,"name":"loading test/fails_during_teardown.dart","suiteID":0,"groupIDs":[],"metadata":{"skip":false,"skipReason":null},"line":null,"column":null,"url":null},"type":"testStart","time":0}
+{"count":1,"time":3,"type":"allSuites"}
+{"testID":1,"result":"success","skipped":false,"hidden":true,"type":"testDone","time":183}
+{"group":{"id":2,"suiteID":0,"parentID":null,"name":"","metadata":{"skip":false,"skipReason":null},"testCount":1,"line":null,"column":null,"url":null},"type":"group","time":184}
+{"test":{"id":3,"name":"a test","suiteID":0,"groupIDs":[2],"metadata":{"skip":false,"skipReason":null},"line":8,"column":3,"url":"file:///Users/thomas.jarvstrand/.emacs.d/lisp/verdict/test/resources/dart/test/fails_during_teardown.dart"},"type":"testStart","time":184}
+{"testID":3,"error":"Exception","stackTrace":"test/fails_during_teardown.dart 5:5  main.<fn>\n","isFailure":false,"type":"error","time":193}
+{"testID":3,"result":"error","skipped":false,"hidden":false,"type":"testDone","time":193}
+{"success":false,"type":"done","time":196}
