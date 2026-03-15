@@ -137,6 +137,10 @@ nil   — prompt before each run, then offer to remember the answer."
 (defvar verdict-model nil
   "List of root node plists (display model, derived from verdict--nodes).")
 
+(defvar verdict--output-node-id nil
+  "ID of the verdict--nodes entry currently shown in *verdict-output*, or nil.")
+
+
 (defvar verdict-buffer-name "*verdict*"
   "Name of the verdict results buffer.")
 
@@ -251,11 +255,12 @@ See `verdict--backends' for the supported predicate forms."
 
 (defun verdict--output-node (parent-id parent-label output)
   "Return a synthetic *output* leaf plist for PARENT-ID with OUTPUT."
-  (list :id     (format "output-%s" parent-id)
-        :label  (propertize "<init>" 'face 'verdict-init-face)
-        :title  parent-label
-        :output output
-        :status nil))
+  (list :id        (format "output-%s" parent-id)
+        :source-id parent-id
+        :label     (propertize "<init>" 'face 'verdict-init-face)
+        :title     parent-label
+        :output    output
+        :status    nil))
 
 (defun verdict--build-tree (ids)
   "Build a nested tree of node plists from IDS by resolving children.
@@ -331,22 +336,39 @@ and injects a synthetic *output* child for any group with :output."
 
 ;;; Visit / Toggle Actions
 
+(defun verdict--write-output-buffer (label output)
+  "Erase *verdict-output* and write LABEL header followed by OUTPUT."
+  (unless (eq major-mode 'verdict-output-mode)
+    (verdict-output-mode))
+  (let (buffer-read-only)
+    (erase-buffer)
+    (let ((sep (propertize (make-string (length label) ?─) 'face 'verdict-name-face)))
+      (insert sep "\n" (propertize label 'face 'verdict-name-face) "\n" sep "\n\n"))
+    (when output
+      (insert (ansi-color-apply output)))))
+
+(defun verdict--append-output-buffer (id prev msg)
+  "Append MSG to *verdict-output* if it is open and showing node ID.
+PREV is the node's :output before this message; used to add a newline separator."
+  (when (equal id verdict--output-node-id)
+    (when-let* ((buf (get-buffer "*verdict-output*"))
+                ((get-buffer-window buf)))
+      (with-current-buffer buf
+        (let (buffer-read-only)
+          (when prev (insert "\n"))
+          (insert (ansi-color-apply msg)))))))
+
 (defun verdict--show-output (&optional _arg)
   "Display output for the node at point in *verdict-output*."
   (interactive "P")
   (let* ((btn    (treemacs-node-at-point))
          (item   (treemacs-button-get btn :item))
+         (id     (or (plist-get item :source-id) (plist-get item :id)))
          (label  (or (plist-get item :title) (plist-get item :label)))
          (output (plist-get item :output)))
+    (setq verdict--output-node-id id)
     (with-current-buffer (get-buffer-create "*verdict-output*")
-      (verdict-output-mode)
-      (let (buffer-read-only)
-        (erase-buffer)
-        (let ((sep (propertize (make-string (length label) ?─) 'face 'verdict-name-face)))
-          (insert sep "\n" (propertize label 'face 'verdict-name-face) "\n" sep "\n\n"))
-        (when output
-          (insert (ansi-color-apply output)))
-        (goto-char (point-min)))
+      (verdict--write-output-buffer label output)
       (display-buffer (current-buffer) '(display-buffer-below-selected)))))
 
 (defun verdict--visit (&optional _arg)
@@ -448,7 +470,8 @@ and injects a synthetic *output* child for any group with :output."
   (when verdict--render-timer
     (cancel-timer verdict--render-timer)
     (setq verdict--render-timer nil))
-  (setq verdict-model nil))
+  (setq verdict-model nil)
+  (setq verdict--output-node-id nil))
 
 
 (defun verdict--maybe-save-buffer ()
@@ -533,7 +556,8 @@ EVENT must have a :type field with a keyword value."
             (node   (gethash id verdict--nodes)))
        (when (and msg node)
          (let ((prev (plist-get node :output)))
-           (plist-put node :output (if prev (concat prev "\n" msg) msg))))))
+           (plist-put node :output (if prev (concat prev "\n" msg) msg))
+           (verdict--append-output-buffer id prev msg)))))
 
     (:test-done
      (when-let ((node (gethash (plist-get event :id) verdict--nodes)))
