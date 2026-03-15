@@ -9,7 +9,6 @@
 
 ;; TODO
 ;; - Tests
-;; - Close output window when starting new test run
 ;; - [Dart] Add links to stack traces in output
 
 ;;; Faces
@@ -476,6 +475,11 @@ and injects a synthetic *output* child for any group with :output."
 TYPE is one of :project :file :group :test. NAME is a string or nil."
   (verdict--maybe-save-buffer)
   (verdict-reset)
+  (when-let ((buf (get-buffer "*verdict-output*")))
+    (when-let ((win (get-buffer-window buf)))
+      (when (window-dedicated-p win)
+        (delete-window win)))
+    (kill-buffer buf))
   (verdict--spinner-start)
   (display-buffer (verdict--render) '(nil (inhibit-same-window . t))))
 
