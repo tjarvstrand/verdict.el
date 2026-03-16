@@ -611,25 +611,37 @@ EVENT must have a :type field with a keyword value."
     (message "verdict: running %s" (string-join cmd " "))
     (message "verdict: in %s" dir)))
 
-(defun verdict--run (scope)
-  "Run tests for SCOPE using the backend matching the current buffer."
+(defun verdict--run (scope debug)
+  "Run tests for SCOPE using the backend matching the current buffer.
+DEBUG is passed to the backend's command function."
   (let ((backend (verdict--active-backend)))
     (setq verdict--proc-backend backend)
-    (setq verdict--last-command (funcall (plist-get backend :command-fn) scope))
+    (setq verdict--last-command (funcall (plist-get backend :command-fn) scope debug))
     (verdict--launch verdict--last-command)))
 
 ;;; Public Run Commands
 
-(defun verdict-run-at-point () (interactive) (verdict--run :at-point))
-(defun verdict-run-group ()    (interactive) (verdict--run :group))
-(defun verdict-run-file ()     (interactive) (verdict--run :file))
-(defun verdict-run-project ()  (interactive) (verdict--run :project))
+(defun verdict-run-at-point ()   (interactive) (verdict--run :at-point nil))
+(defun verdict-run-group ()      (interactive) (verdict--run :group nil))
+(defun verdict-run-file ()       (interactive) (verdict--run :file nil))
+(defun verdict-run-project ()    (interactive) (verdict--run :project nil))
+(defun verdict-debug-at-point () (interactive) (verdict--run :at-point t))
+(defun verdict-debug-group ()    (interactive) (verdict--run :group t))
+(defun verdict-debug-file ()     (interactive) (verdict--run :file t))
+(defun verdict-debug-project ()  (interactive) (verdict--run :project t))
 
-(defun verdict-rerun ()
+(defun verdict-run-last ()
   "Rerun the last test run."
   (interactive)
   (unless verdict--last-command (error "No previous verdict run to repeat"))
   (verdict--launch verdict--last-command))
+
+(defun verdict-debug-last ()
+  "Rerun the last test run with debugging."
+  (interactive)
+  (unless verdict--last-command (error "No previous verdict run to repeat"))
+  (verdict--launch verdict--last-command))
+
 
 ;;; Minor Mode
 
@@ -639,7 +651,12 @@ EVENT must have a :type field with a keyword value."
     (define-key map (kbd "C-c v g") #'verdict-run-group)
     (define-key map (kbd "C-c v f") #'verdict-run-file)
     (define-key map (kbd "C-c v p") #'verdict-run-project)
-    (define-key map (kbd "C-c v r") #'verdict-rerun)
+    (define-key map (kbd "C-c v r") #'verdict-run-last)
+    (define-key map (kbd "C-c v T") #'verdict-debug-at-point)
+    (define-key map (kbd "C-c v G") #'verdict-debug-group)
+    (define-key map (kbd "C-c v F") #'verdict-debug-file)
+    (define-key map (kbd "C-c v P") #'verdict-debug-project)
+    (define-key map (kbd "C-c v R") #'verdict-debug-last)
     map))
 
 (define-minor-mode verdict-mode

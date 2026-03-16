@@ -144,7 +144,7 @@
   "Return a list of \"-L\" flags for each entry in `load-path'."
   (apply #'append (mapcar (lambda (d) (list "-L" d)) load-path)))
 
-(defun verdict-buttercup--command-fn (scope)
+(defun verdict-buttercup--command-fn (scope debug)
   "Return a command plist for running buttercup at SCOPE."
   (verdict-buttercup--reset)
   (let* ((file    (buffer-file-name))

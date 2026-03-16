@@ -265,7 +265,7 @@ Skips root groups (those with empty names)."
 
 ;;; Command Function
 
-(defun verdict-dart--command-fn (scope)
+(defun verdict-dart--command-fn (scope debug)
   "Build dart test command for SCOPE. Returns plist with :command :directory :name.
 Called in user's original buffer context so buffer-file-name and point are available."
   (setq verdict-dart--group-names    (make-hash-table)
@@ -284,7 +284,7 @@ Called in user's original buffer context so buffer-file-name and point are avail
                  (:project  nil)))
          (test-file (unless (eq scope :project) file))
          (test-name (when (memq scope '(:at-point :group)) name)))
-    (list :command   (verdict-dart--command scope test-file test-name project-root nil)
+    (list :command   (verdict-dart--command scope test-file test-name project-root debug)
           :directory project-root
           :name      name)))
 
