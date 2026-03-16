@@ -157,7 +157,9 @@ PREDICATE is one of:
   - a function           — called with no args; non-nil means match
 BACKEND-PLIST keys:
   :context-fn   — function (scope) → backend-specific context plist; called in source buffer
-  :command-fn   — function (context debug) → plist with :command :directory :name
+  :command-fn   — function (context debug) → plist with :command :directory :name.
+                  :command may be a list (verdict manages the process) or a function
+                  (custom launch; fn must call `verdict-stop' when done)
   :line-handler — function (line) called per complete output line")
 
 (defun verdict--match-predicate (predicate)
@@ -607,16 +609,18 @@ EVENT must have a :type field with a keyword value."
          (name (plist-get spec :name))
          (default-directory dir))
     (verdict-start nil name)
-    (setq verdict--proc
-          (make-process
-           :name            "verdict"
-           :command         cmd
-           :connection-type 'pty
-           :filter          #'verdict--filter
-           :sentinel        #'verdict--sentinel
-           :noquery         t))
-    (message "verdict: running %s" (string-join cmd " "))
-    (message "verdict: in %s" dir)))
+    (if (functionp cmd)
+        (funcall cmd)
+      (setq verdict--proc
+            (make-process
+             :name            "verdict"
+             :command         cmd
+             :connection-type 'pty
+             :filter          #'verdict--filter
+             :sentinel        #'verdict--sentinel
+             :noquery         t))
+      (message "verdict: running %s" (string-join cmd " "))
+      (message "verdict: in %s" dir))))
 
 (defun verdict--run (scope debug)
   "Run tests for SCOPE using the backend matching the current buffer.
