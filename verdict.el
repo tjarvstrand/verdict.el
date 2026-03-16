@@ -156,7 +156,8 @@ PREDICATE is one of:
   - a regexp string      — matched against `buffer-name'
   - a function           — called with no args; non-nil means match
 BACKEND-PLIST keys:
-  :command-fn   — function (scope) → plist with :command :directory :name
+  :context-fn   — function (scope) → backend-specific context plist; called in source buffer
+  :command-fn   — function (context debug) → plist with :command :directory :name
   :line-handler — function (line) called per complete output line")
 
 (defun verdict--match-predicate (predicate)
@@ -175,11 +176,12 @@ BACKEND-PLIST keys:
       (error "No verdict backend matches buffer %s (mode: %s)"
              (buffer-name) major-mode)))
 
-(defun verdict-register-backend (predicate command-fn line-handler)
-  "Register a backend with PREDICATE, COMMAND-FN, and LINE-HANDLER.
+(defun verdict-register-backend (predicate context-fn command-fn line-handler)
+  "Register a backend with PREDICATE, CONTEXT-FN, COMMAND-FN, and LINE-HANDLER.
 See `verdict--backends' for the supported predicate forms."
   (add-to-list 'verdict--backends
-               (cons predicate (list :command-fn   command-fn
+               (cons predicate (list :context-fn   context-fn
+                                     :command-fn   command-fn
                                      :line-handler line-handler))))
 
 ;;; Process State
@@ -193,8 +195,11 @@ See `verdict--backends' for the supported predicate forms."
 (defvar verdict--proc-backend nil
   "Backend plist for the currently running (or last completed) process.")
 
-(defvar verdict--last-command nil
-  "Command plist from the last run (:command :directory :name), for rerun.")
+(defvar verdict--last-backend nil
+  "Backend plist from the last run, for rerun.")
+
+(defvar verdict--last-context nil
+  "Context plist from the last run, for rerun.")
 
 ;;; Status Aggregation
 
@@ -590,12 +595,14 @@ EVENT must have a :type field with a keyword value."
     (verdict-stop))
   (message "verdict: process %s" (string-trim event)))
 
-(defun verdict--launch (spec)
-  "Launch a test process from SPEC plist (:command :directory :name)."
+(defun verdict--launch (backend context debug)
+  "Launch a test process for CONTEXT with DEBUG using BACKEND."
+  (setq verdict--proc-backend backend)
   (when (process-live-p verdict--proc)
     (kill-process verdict--proc))
   (setq verdict--partial "")
-  (let* ((cmd  (plist-get spec :command))
+  (let* ((spec (funcall (plist-get backend :command-fn) context debug))
+         (cmd  (plist-get spec :command))
          (dir  (or (plist-get spec :directory) default-directory))
          (name (plist-get spec :name))
          (default-directory dir))
@@ -614,10 +621,11 @@ EVENT must have a :type field with a keyword value."
 (defun verdict--run (scope debug)
   "Run tests for SCOPE using the backend matching the current buffer.
 DEBUG is passed to the backend's command function."
-  (let ((backend (verdict--active-backend)))
-    (setq verdict--proc-backend backend)
-    (setq verdict--last-command (funcall (plist-get backend :command-fn) scope debug))
-    (verdict--launch verdict--last-command)))
+  (let* ((backend (verdict--active-backend))
+         (context (funcall (plist-get backend :context-fn) scope)))
+    (setq verdict--last-backend backend)
+    (setq verdict--last-context context)
+    (verdict--launch backend context debug)))
 
 ;;; Public Run Commands
 
@@ -633,14 +641,14 @@ DEBUG is passed to the backend's command function."
 (defun verdict-run-last ()
   "Rerun the last test run."
   (interactive)
-  (unless verdict--last-command (error "No previous verdict run to repeat"))
-  (verdict--launch verdict--last-command))
+  (unless verdict--last-context (error "No previous verdict run to repeat"))
+  (verdict--launch verdict--last-backend verdict--last-context nil))
 
 (defun verdict-debug-last ()
   "Rerun the last test run with debugging."
   (interactive)
-  (unless verdict--last-command (error "No previous verdict run to repeat"))
-  (verdict--launch verdict--last-command))
+  (unless verdict--last-context (error "No previous verdict run to repeat"))
+  (verdict--launch verdict--last-backend verdict--last-context t))
 
 
 ;;; Minor Mode

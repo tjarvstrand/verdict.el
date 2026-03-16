@@ -119,15 +119,6 @@ Returns (:kind KIND :name NAME :line LINE) or nil."
       (error "Could not find pubspec.yaml above %s" buffer-file-name))
     dir))
 
-;;; Command Builder
-
-(defun verdict-dart--command (scope file name _dir debug)
-  "Build the dart test command for SCOPE, FILE, NAME, DEBUG."
-  (when debug
-    (error "verdict-dart: debug not yet supported"))
-  (let ((name-args (when name (list "--plain-name" name)))
-        (file-args (when file (list file))))
-    (append (list "dart" "test" "-r" "json") name-args file-args)))
 
 ;;; Helpers
 
@@ -263,34 +254,47 @@ Skips root groups (those with empty names)."
     (error
      (message "verdict-dart: error parsing line: %s\n%s" line (error-message-string err)))))
 
-;;; Command Function
+;;; Context and Command Functions
 
-(defun verdict-dart--command-fn (scope debug)
-  "Build dart test command for SCOPE. Returns plist with :command :directory :name.
-Called in user's original buffer context so buffer-file-name and point are available."
+(defun verdict-dart--context-fn (scope)
+  "Return a context plist for SCOPE, reading from the current buffer.
+Resets per-run parse state as a side effect."
   (setq verdict-dart--group-names    (make-hash-table)
         verdict-dart--file-suite-ids (make-hash-table :test #'equal)
         verdict-dart--loading-tests  (make-hash-table :test #'equal))
-  (let* ((project-root (verdict-dart--project-root))
-         (file buffer-file-name)
-         (name (pcase scope
-                 (:at-point (plist-get (or (verdict-dart--test-at-point)
-                                           (error "No test found at point"))
-                                       :name))
-                 (:group    (plist-get (car (or (verdict-dart--enclosing-calls)
-                                                (error "No group or test found at point")))
-                                       :name))
-                 (:file     (file-name-nondirectory file))
-                 (:project  nil)))
-         (test-file (unless (eq scope :project) file))
-         (test-name (when (memq scope '(:at-point :group)) name)))
-    (list :command   (verdict-dart--command scope test-file test-name project-root debug)
-          :directory project-root
-          :name      name)))
+  (let* ((file      (buffer-file-name))
+         (test-name (pcase scope
+                      (:at-point (plist-get (or (verdict-dart--test-at-point)
+                                                (error "No test found at point"))
+                                            :name))
+                      (:group    (plist-get (car (or (verdict-dart--enclosing-calls)
+                                                     (error "No group or test found at point")))
+                                            :name))
+                      (_ nil))))
+    (list :project   (verdict-dart--project-root)
+          :file      (unless (eq scope :project) file)
+          :test-name test-name
+          :name      (or test-name (when file (file-name-nondirectory file))))))
+
+(defun verdict-dart--command-fn (context debug)
+  "Build dart test command from CONTEXT and DEBUG flag.
+Returns a plist with :command :directory :name."
+  (when debug
+    (error "verdict-dart: debug not yet supported"))
+  (let ((file (plist-get context :file))
+        (name (plist-get context :test-name)))
+    (list :command   (append '("dart" "test" "-r" "json")
+                             (when name (list "--plain-name" name))
+                             (when file (list file)))
+          :directory (plist-get context :project)
+          :name      (plist-get context :name))))
 
 ;;; Backend Registration
 
-(verdict-register-backend 'dart-ts-mode #'verdict-dart--command-fn #'verdict-dart--handle-line)
+(verdict-register-backend 'dart-ts-mode
+                         #'verdict-dart--context-fn
+                         #'verdict-dart--command-fn
+                         #'verdict-dart--handle-line)
 
 (add-hook 'dart-ts-mode-hook #'verdict-mode)
 

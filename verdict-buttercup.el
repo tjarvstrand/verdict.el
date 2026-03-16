@@ -134,7 +134,7 @@
                                :line      nil))
           (push (cons id depth) verdict-buttercup--suite-stack))))))))
 
-;;; Command function
+;;; Context and Command Functions
 
 (defun verdict-buttercup--emacs-executable ()
   "Return the path to the running Emacs executable."
@@ -144,34 +144,38 @@
   "Return a list of \"-L\" flags for each entry in `load-path'."
   (apply #'append (mapcar (lambda (d) (list "-L" d)) load-path)))
 
-(defun verdict-buttercup--command-fn (scope debug)
-  "Return a command plist for running buttercup at SCOPE."
+(defun verdict-buttercup--context-fn (scope)
+  "Return a context plist for SCOPE, reading from the current buffer."
   (verdict-buttercup--reset)
-  (let* ((file    (buffer-file-name))
-         (root    (or (when-let ((proj (project-current)))
-                        (project-root proj))
-                      default-directory))
+  (let ((file (buffer-file-name))
+        (root (or (when-let ((proj (project-current)))
+                    (project-root proj))
+                  default-directory)))
+    (when (and (not (eq scope :project)) (not file))
+      (error "No file associated with current buffer"))
+    (list :file file :project root)))
+
+(defun verdict-buttercup--command-fn (context _debug)
+  "Return a command plist for running buttercup with CONTEXT."
+  (let* ((file    (plist-get context :file))
+         (root    (plist-get context :project))
          (lp-args (verdict-buttercup--load-path-args)))
-    (pcase scope
-      ((or :at-point :group :file)
-       (unless file (error "No file associated with current buffer"))
-       (list :command   `(,(verdict-buttercup--emacs-executable) "--batch"
-                          ,@lp-args
-                          "--eval" "(setq buttercup-color nil)"
-                          "-l" ,file
-                          "-f" "buttercup-run")
-             :directory root
-             :name      (file-name-nondirectory file)))
-      (:project
-       (let ((test-dir (expand-file-name "test" root)))
-         (list :command   `(,(verdict-buttercup--emacs-executable) "--batch"
-                            ,@lp-args
-                            "--eval" "(setq buttercup-color nil)"
-                            "-f" "buttercup-run-discover"
-                            ,(if (file-directory-p test-dir) test-dir "."))
-               :directory root
-               :name      (file-name-nondirectory
-                           (directory-file-name root))))))))
+    (if file
+        (list :command   `(,(verdict-buttercup--emacs-executable) "--batch"
+                           ,@lp-args
+                           "--eval" "(setq buttercup-color nil)"
+                           "-l" ,file
+                           "-f" "buttercup-run")
+              :directory root
+              :name      (file-name-nondirectory file))
+      (let ((test-dir (expand-file-name "test" root)))
+        (list :command   `(,(verdict-buttercup--emacs-executable) "--batch"
+                           ,@lp-args
+                           "--eval" "(setq buttercup-color nil)"
+                           "-f" "buttercup-run-discover"
+                           ,(if (file-directory-p test-dir) test-dir "."))
+              :directory root
+              :name      (file-name-nondirectory (directory-file-name root)))))))
 
 ;;; Setup
 
@@ -179,6 +183,7 @@
   "Register the buttercup backend with verdict for `emacs-lisp-mode' buffers."
   (interactive)
   (verdict-register-backend 'emacs-lisp-mode
+                             #'verdict-buttercup--context-fn
                              #'verdict-buttercup--command-fn
                              #'verdict-buttercup--line-handler))
 
