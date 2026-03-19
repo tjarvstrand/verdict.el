@@ -5,6 +5,14 @@
 (require 'verdict)
 (require 'treesit)
 (require 'f)
+(require 'yaml)
+
+;;; Customization
+
+(defvar verdict-dart-flutter-packages '("flutter_test")
+  "List of package names whose import indicates a Flutter test file.
+When a test file imports any of these packages, `flutter test' is
+used instead of `dart test'.")
 
 ;;; Internal State
 
@@ -276,14 +284,53 @@ Resets per-run parse state as a side effect."
           :test-name test-name
           :name      (or test-name (when file (file-name-nondirectory file))))))
 
+;;; Flutter Detection
+
+(defun verdict-dart--imported-packages ()
+  "Return list of package names imported in the current buffer, using tree-sitter."
+  (verdict-dart--ensure-parser)
+  (->> (treesit-query-capture
+        (treesit-buffer-root-node 'dart)
+        '((import_or_export (configurable_uri (uri_string_literal) @uri))))
+       (-map (lambda (capture)
+               (verdict-dart--string-content (treesit-node-text (cdr capture) t))))
+       (-filter (lambda (s) (string-prefix-p "package:" s)))
+       (-map (lambda (s) (car (split-string (string-remove-prefix "package:" s) "/"))))))
+
+(defun verdict-dart--flutter-project-p (project-dir)
+  "Return non-nil if PROJECT-DIR's pubspec.yaml depends on Flutter.
+Checks for a flutter SDK dependency or a dev-dependency on any
+package in `verdict-dart-flutter-packages'."
+  (let* ((yaml (yaml-parse-string
+                (with-temp-buffer
+                  (insert-file-contents (f-join project-dir "pubspec.yaml"))
+                  (buffer-string))
+                :object-type 'alist))
+         (deps     (alist-get 'dependencies yaml))
+         (dev-deps (alist-get 'dev_dependencies yaml)))
+    (or (alist-get 'sdk (alist-get 'flutter deps))
+        (seq-find (lambda (pkg) (alist-get (intern pkg) dev-deps))
+                  verdict-dart-flutter-packages))))
+
+(defun verdict-dart--use-flutter-p (context)
+  "Return non-nil if CONTEXT indicates Flutter should be used.
+When a file is available, checks its imports against
+`verdict-dart-flutter-packages'.  Otherwise falls back to
+checking the project's pubspec.yaml."
+  (if (plist-get context :file)
+      (seq-intersection (verdict-dart--imported-packages)
+                        verdict-dart-flutter-packages)
+    (verdict-dart--flutter-project-p (plist-get context :project))))
+
 (defun verdict-dart--command-fn (context debug)
-  "Build dart test command from CONTEXT and DEBUG flag.
+  "Build dart/flutter test command from CONTEXT and DEBUG flag.
 Returns a plist with :command :directory :name."
   (when debug
     (error "verdict-dart: debug not yet supported"))
-  (let ((file (plist-get context :file))
-        (name (plist-get context :test-name)))
-    (list :command   (append '("dart" "test" "-r" "json")
+  (let* ((file    (plist-get context :file))
+         (name    (plist-get context :test-name))
+         (runner  (if (verdict-dart--use-flutter-p context) "flutter" "dart")))
+    (list :command   (append (list runner "test" "-r" "json")
                              (when name (list "--plain-name" name))
                              (when file (list file)))
           :directory (plist-get context :project)
