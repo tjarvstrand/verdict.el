@@ -8,8 +8,12 @@
 (require 's)
 
 ;; TODO
-;; - Tests
 ;; - [Dart] Add links to stack traces in output
+;; - Fix keybindings and mouse actions
+;; - Mode line spinner
+;; - Mode line result indicator
+;; - Ootput filter
+;; - Jump to next failure
 
 ;;; Faces
 
@@ -308,12 +312,12 @@ and injects a synthetic *output* child for any group with :output."
   :open-icon   (if (plist-get item :children)
                    (verdict--group-icon (plist-get item :status) t)
                  (verdict--leaf-icon (plist-get item :status)))
-  :label       (plist-get item :label)
+  :label       (verdict--node-label item)
   :key         (plist-get item :id)
   :children    (plist-get item :children)
   :child-type  'verdict-node
   :ret-action           #'verdict--toggle-or-show-output
-  :double-click-action  #'verdict--toggle-or-visit)
+  :double-click-action  #'verdict--toggle-or-show-output)
 
 (treemacs-define-variadic-entry-node-type verdict-root
   :key        "verdict-root"
@@ -385,11 +389,37 @@ PREV is the node's :output before this message; used to add a newline separator.
          (item (treemacs-button-get btn :item))
          (file (plist-get item :file))
          (line (or (plist-get item :line) 1)))
-    (verdict--show-output)
     (when file
       (find-file-other-window file)
       (goto-char (point-min))
       (forward-line (1- line)))))
+
+(defvar verdict--visit-link-keymap
+  (let ((map (make-sparse-keymap)))
+    (define-key map [mouse-1] #'verdict--visit-link-click)
+    map)
+  "Keymap for the visit-file link icon in verdict nodes.")
+
+(defun verdict--visit-link-click (event)
+  "Visit the file/line for the node whose link icon was clicked."
+  (interactive "e")
+  (let ((pos (posn-point (event-start event))))
+    (when pos
+      (goto-char pos)
+      (verdict--visit))))
+
+(defun verdict--visit-link (file)
+  "Return a propertized link icon string when FILE is non-nil."
+  (when file
+    (propertize " ↗" 'face 'link
+                     'keymap verdict--visit-link-keymap
+                     'mouse-face 'highlight
+                     'help-echo "Visit file")))
+
+(defun verdict--node-label (item)
+  "Return the display label for ITEM, with a visit link if it has a file."
+  (concat (plist-get item :label)
+          (verdict--visit-link (plist-get item :file))))
 
 (defun verdict--toggle-or-show-output (&optional _arg)
   "Expand/collapse group nodes; show output for leaf nodes."
@@ -400,14 +430,6 @@ PREV is the node's :output before this message; used to add a newline separator.
         (treemacs-TAB-action)
       (verdict--show-output))))
 
-(defun verdict--toggle-or-visit (&optional _arg)
-  "Expand/collapse group nodes; navigate to file/line for leaf nodes."
-  (interactive "P")
-  (let* ((btn  (treemacs-node-at-point))
-         (item (treemacs-button-get btn :item)))
-    (if (plist-get item :children)
-        (treemacs-TAB-action)
-      (verdict--visit))))
 
 ;;; Node Helpers
 
