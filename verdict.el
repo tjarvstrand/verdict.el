@@ -16,6 +16,7 @@
 ;; - Jump to next failure
 ;; - Add a module scope
 ;; - Keybinding/button to rerun group/test from verdict buffer
+;; - Stop link/keybinding
 
 ;;; Faces
 
@@ -145,6 +146,9 @@ nil   — prompt before each run, then offer to remember the answer."
 
 (defvar verdict--output-node-id nil
   "ID of the verdict--nodes entry currently shown in *verdict-output*, or nil.")
+
+(defvar verdict--run-state nil
+  "Current run state: nil, `running', or `finished'.")
 
 
 (defvar verdict-buffer-name "*verdict*"
@@ -469,7 +473,7 @@ PREV is the node's :output before this message; used to add a newline separator.
           (when (fboundp 'hl-line-highlight)
             (hl-line-highlight)))
       (treemacs-initialize verdict-root :with-expand-depth 99)
-      (setq-local mode-line-format " %b")
+      (setq-local mode-line-format verdict--mode-line-format)
       (local-set-key (kbd "M-RET") #'verdict--visit))
     (current-buffer)))
 
@@ -479,6 +483,7 @@ PREV is the node's :output before this message; used to add a newline separator.
   "Advance spinner frame and schedule a render."
   (setq verdict--spinner-frame
         (mod (1+ verdict--spinner-frame) (length (verdict--spinner-frames))))
+  (verdict--update-mode-line)
   (verdict--schedule-render))
 
 (defun verdict--spinner-start ()
@@ -494,6 +499,61 @@ PREV is the node's :output before this message; used to add a newline separator.
     (cancel-timer verdict--spinner-timer)
     (setq verdict--spinner-timer nil)))
 
+;;; Mode Line
+
+(defun verdict--count-by-status ()
+  "Return an alist of (status . count) for all leaf nodes."
+  (let ((counts nil))
+    (maphash (lambda (_id node)
+               (unless (plist-member node :children)
+                 (let* ((status (plist-get node :status))
+                        (entry  (assq status counts)))
+                   (if entry
+                       (setcdr entry (1+ (cdr entry)))
+                     (push (cons status 1) counts)))))
+             verdict--nodes)
+    counts))
+
+(defun verdict--mode-line-string ()
+  "Return the mode line string for the verdict buffer."
+  (pcase verdict--run-state
+    ('running
+     (let* ((spinner (aref (verdict--spinner-frames) verdict--spinner-frame))
+            (face (if verdict-icon-font
+                      `(:inherit verdict-running-face :family ,verdict-icon-font)
+                    'verdict-running-face)))
+       (concat " *verdict* " (propertize spinner 'face face) " Running…")))
+    ('finished
+     (let* ((counts (verdict--count-by-status))
+            (passed  (or (cdr (assq 'passed counts)) 0))
+            (failed  (or (cdr (assq 'failed counts)) 0))
+            (errored (or (cdr (assq 'error counts)) 0))
+            (skipped (or (cdr (assq 'skipped counts)) 0))
+            (stopped (or (cdr (assq 'stopped counts)) 0))
+            (total   (+ passed failed errored skipped stopped))
+            (parts   nil))
+       (when (> stopped 0)
+         (push (propertize (format "%d stopped" stopped) 'face 'verdict-stopped-face) parts))
+       (when (> skipped 0)
+         (push (propertize (format "%d skipped" skipped) 'face 'verdict-skipped-face) parts))
+       (when (> errored 0)
+         (push (propertize (format "%d error" errored) 'face 'verdict-error-face) parts))
+       (when (> failed 0)
+         (push (propertize (format "%d failed" failed) 'face 'verdict-error-face) parts))
+       (push (propertize (format "%d passed" passed) 'face 'verdict-success-face) parts)
+       (format " *verdict* %s — %d tests" (string-join parts ", ") total)))
+    (_ " *verdict*")))
+
+(defvar verdict--mode-line-format
+  '(:eval (verdict--mode-line-string))
+  "Mode line construct for the verdict buffer.")
+
+(defun verdict--update-mode-line ()
+  "Force a mode line update in the verdict buffer."
+  (when-let ((buf (get-buffer verdict-buffer-name)))
+    (with-current-buffer buf
+      (force-mode-line-update))))
+
 (defun verdict-reset ()
   "Clear all internal verdict state. Does not render."
   (verdict--spinner-stop)
@@ -503,7 +563,8 @@ PREV is the node's :output before this message; used to add a newline separator.
     (cancel-timer verdict--render-timer)
     (setq verdict--render-timer nil))
   (setq verdict-model nil)
-  (setq verdict--output-node-id nil))
+  (setq verdict--output-node-id nil)
+  (setq verdict--run-state nil))
 
 
 (defun verdict--maybe-save-buffer ()
@@ -530,12 +591,14 @@ PREV is the node's :output before this message; used to add a newline separator.
 TYPE is one of :project :file :group :test. NAME is a string or nil."
   (verdict--maybe-save-buffer)
   (verdict-reset)
+  (setq verdict--run-state 'running)
   (verdict--spinner-start)
   (display-buffer (verdict--render) '(nil (inhibit-same-window . t))))
 
 (defun verdict-stop ()
   "Mark all running nodes as stopped and render."
   (verdict--spinner-stop)
+  (setq verdict--run-state 'finished)
   (when verdict--render-timer
     (cancel-timer verdict--render-timer)
     (setq verdict--render-timer nil))
@@ -544,7 +607,8 @@ TYPE is one of :project :file :group :test. NAME is a string or nil."
      (when (eq (plist-get node :status) 'running)
        (puthash id (plist-put node :status 'stopped) verdict--nodes)))
    verdict--nodes)
-  (verdict--render))
+  (verdict--render)
+  (verdict--update-mode-line))
 
 (defun verdict-event (event)
   "Process an EVENT plist and update internal state, then schedule a render.
@@ -591,6 +655,8 @@ EVENT must have a :type field with a keyword value."
        (plist-put node :status (plist-get event :result))))
 
     (:done
+     (setq verdict--run-state 'finished)
+     (verdict--update-mode-line)
      (message "verdict: test run complete")))
 
   (verdict--schedule-render))
