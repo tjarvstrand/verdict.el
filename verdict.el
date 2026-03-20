@@ -10,8 +10,6 @@
 ;; TODO
 ;; - [Dart] Add links to stack traces in output
 ;; - Fix keybindings and mouse actions
-;; - Mode line spinner
-;; - Mode line result indicator
 ;; - Output filter
 ;; - Jump to next failure
 ;; - Add a module scope
@@ -47,6 +45,48 @@
 (defface verdict-name-face
   '((t :inherit shadow))
   "Face for test name header in the output buffer.")
+
+;; Mode-line face variants
+
+(defface verdict-success-mode-line-face
+  '((t :inherit verdict-success-face))
+  "Face for passed tests in inactive mode line.")
+
+(defface verdict-success-mode-line-active-face
+  '((t :inherit verdict-success-face))
+  "Face for passed tests in active mode line.")
+
+(defface verdict-error-mode-line-face
+  '((t :inherit verdict-error-face))
+  "Face for failed tests in inactive mode line.")
+
+(defface verdict-error-mode-line-active-face
+  '((t :inherit verdict-error-face))
+  "Face for failed tests in active mode line.")
+
+(defface verdict-skipped-mode-line-face
+  '((t :inherit verdict-skipped-face))
+  "Face for skipped tests in inactive mode line.")
+
+(defface verdict-skipped-mode-line-active-face
+  '((t :inherit verdict-skipped-face))
+  "Face for skipped tests in active mode line.")
+
+(defface verdict-running-mode-line-face
+  '((t :inherit verdict-running-face))
+  "Face for running tests in inactive mode line.")
+
+(defface verdict-running-mode-line-active-face
+  '((t :inherit verdict-running-face))
+  "Face for running tests in active mode line.")
+
+(defface verdict-stopped-mode-line-face
+  '((t :inherit verdict-stopped-face))
+  "Face for stopped tests in inactive mode line.")
+
+(defface verdict-stopped-mode-line-active-face
+  '((t :inherit verdict-stopped-face))
+  "Face for stopped tests in active mode line.")
 
 ;;; Braille font detection
 
@@ -501,6 +541,11 @@ PREV is the node's :output before this message; used to add a newline separator.
 
 ;;; Mode Line
 
+(defun verdict--mode-line-face (face)
+  "Return the mode-line variant of FACE for the current window."
+  (let ((suffix (if (mode-line-window-selected-p) "-mode-line-active-face" "-mode-line-face")))
+    (intern (concat (string-remove-suffix "-face" (symbol-name face)) suffix))))
+
 (defun verdict--count-by-status ()
   "Return an alist of (status . count) for all leaf nodes."
   (let ((counts nil))
@@ -519,9 +564,10 @@ PREV is the node's :output before this message; used to add a newline separator.
   (pcase verdict--run-state
     ('running
      (let* ((spinner (aref (verdict--spinner-frames) verdict--spinner-frame))
+            (base (verdict--mode-line-face 'verdict-running-face))
             (face (if verdict-icon-font
-                      `(:inherit verdict-running-face :family ,verdict-icon-font)
-                    'verdict-running-face)))
+                      `(:inherit ,base :family ,verdict-icon-font)
+                    base)))
        (concat " *verdict* " (propertize spinner 'face face) " Running…")))
     ('finished
      (let* ((counts (verdict--count-by-status))
@@ -533,14 +579,14 @@ PREV is the node's :output before this message; used to add a newline separator.
             (total   (+ passed failed errored skipped stopped))
             (parts   nil))
        (when (> stopped 0)
-         (push (propertize (format "%d stopped" stopped) 'face 'verdict-stopped-face) parts))
+         (push (propertize (format "%d stopped" stopped) 'face (verdict--mode-line-face 'verdict-stopped-face)) parts))
        (when (> skipped 0)
-         (push (propertize (format "%d skipped" skipped) 'face 'verdict-skipped-face) parts))
+         (push (propertize (format "%d skipped" skipped) 'face (verdict--mode-line-face 'verdict-skipped-face)) parts))
        (when (> errored 0)
-         (push (propertize (format "%d error" errored) 'face 'verdict-error-face) parts))
+         (push (propertize (format "%d error" errored) 'face (verdict--mode-line-face 'verdict-error-face)) parts))
        (when (> failed 0)
-         (push (propertize (format "%d failed" failed) 'face 'verdict-error-face) parts))
-       (push (propertize (format "%d passed" passed) 'face 'verdict-success-face) parts)
+         (push (propertize (format "%d failed" failed) 'face (verdict--mode-line-face 'verdict-error-face)) parts))
+       (push (propertize (format "%d passed" passed) 'face (verdict--mode-line-face 'verdict-success-face)) parts)
        (format " *verdict* %s — %d tests" (string-join parts ", ") total)))
     (_ " *verdict*")))
 
