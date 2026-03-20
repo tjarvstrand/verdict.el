@@ -291,7 +291,7 @@ Resets per-run parse state as a side effect."
   (verdict-dart--ensure-parser)
   (->> (treesit-query-capture
         (treesit-buffer-root-node 'dart)
-        '((import_or_export (configurable_uri (uri_string_literal) @uri))))
+        '((library_import (import_specification (configurable_uri (uri (string_literal) @uri))))))
        (-map (lambda (capture)
                (verdict-dart--string-content (treesit-node-text (cdr capture) t))))
        (-filter (lambda (s) (string-prefix-p "package:" s)))
