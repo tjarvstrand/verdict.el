@@ -202,14 +202,14 @@ Skips root groups (those with empty names)."
                                         :file       (verdict-dart--url-to-file (gethash "url" group))))))))
 
             ("testStart"
-             (let* ((test        (gethash "test" ev))
-                    (id          (gethash "id" test))
-                    (name        (gethash "name" test))
-                    (suite-id    (gethash "suiteID" test)))
-               (if (string-match-p "^loading " name)
+             (let* ((test      (gethash "test" ev))
+                    (id        (gethash "id" test))
+                    (name      (gethash "name" test))
+                    (suite-id  (gethash "suiteID" test))
+                    (group-ids (gethash "groupIDs" test)))
+               (if (null group-ids)
                    (puthash id suite-id verdict-dart--loading-tests)
-                 (let* ((group-ids   (gethash "groupIDs" test))
-                        (parent-id  (or (verdict-dart--innermost-group group-ids) suite-id))
+                 (let* ((parent-id   (or (verdict-dart--innermost-group group-ids) suite-id))
                         (parent-name (-> group-ids
                                          last
                                          car
