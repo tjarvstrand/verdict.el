@@ -1,7 +1,7 @@
-{"protocolVersion":"0.1.1","runnerVersion":"1.30.0","pid":74425,"type":"start","time":0}
+{"protocolVersion":"0.1.1","runnerVersion":"1.30.0","pid":4371,"type":"start","time":0}
 {"suite":{"id":0,"platform":"vm","path":"test/fails_to_load.dart"},"type":"suite","time":0}
 {"test":{"id":1,"name":"loading test/fails_to_load.dart","suiteID":0,"groupIDs":[],"metadata":{"skip":false,"skipReason":null},"line":null,"column":null,"url":null},"type":"testStart","time":0}
-{"count":1,"time":4,"type":"allSuites"}
-{"testID":1,"error":"Failed to load \"test/fails_to_load.dart\":\ntest/fails_to_load.dart:4:3: Error: Expected ';' after this.\n  a\n  ^\ntest/fails_to_load.dart:4:3: Error: Undefined name 'a'.\n  a\n  ^","stackTrace":"package:test_core/src/runner/vm/platform.dart 290:7   VMPlatform._compileToKernel\n===== asynchronous gap ===========================\npackage:test_core/src/runner/vm/platform.dart 260:11  VMPlatform._spawnIsolate\n===== asynchronous gap ===========================\npackage:test_core/src/runner/vm/platform.dart 83:19   VMPlatform.load\n===== asynchronous gap ===========================\npackage:test_core/src/runner/loader.dart 244:27       Loader.loadFile.<fn>\n===== asynchronous gap ===========================\npackage:test_core/src/runner/load_suite.dart 95:21    new LoadSuite.<fn>.<fn>\n","isFailure":false,"type":"error","time":117}
-{"testID":1,"result":"error","skipped":false,"hidden":false,"type":"testDone","time":119}
-{"success":false,"type":"done","time":120}
+{"count":1,"time":3,"type":"allSuites"}
+{"testID":1,"error":"Failed to load \"test/fails_to_load.dart\":\ntest/fails_to_load.dart:4:3: Error: Expected ';' after this.\n  a\n  ^\ntest/fails_to_load.dart:4:3: Error: Undefined name 'a'.\n  a\n  ^","stackTrace":"package:test_core/src/runner/vm/platform.dart 290:7   VMPlatform._compileToKernel\n===== asynchronous gap ===========================\npackage:test_core/src/runner/vm/platform.dart 260:11  VMPlatform._spawnIsolate\n===== asynchronous gap ===========================\npackage:test_core/src/runner/vm/platform.dart 83:19   VMPlatform.load\n===== asynchronous gap ===========================\npackage:test_core/src/runner/loader.dart 244:27       Loader.loadFile.<fn>\n===== asynchronous gap ===========================\npackage:test_core/src/runner/load_suite.dart 95:21    new LoadSuite.<fn>.<fn>\n","isFailure":false,"type":"error","time":103}
+{"testID":1,"result":"error","skipped":false,"hidden":false,"type":"testDone","time":104}
+{"success":false,"type":"done","time":106}

@@ -143,7 +143,7 @@ and return the resulting verdict events in arrival order."
     (let ((file-group (verdict-dart-test--find-group verdict-dart-test--main-events "dart_test.dart")))
       (expect file-group :not :to-be nil)
       (expect (plist-get file-group :file)
-              :to-equal (expand-file-name "test/dart_test.dart" verdict-dart-test--dir))))
+              :to-equal "test/dart_test.dart")))
 
   (it "emits a :done event"
     (expect (verdict-dart-test--by-type verdict-dart-test--main-events :done)
@@ -289,24 +289,46 @@ and return the resulting verdict events in arrival order."
              verdict-dart-test--main-events "log from group body" "dart_test.dart")
             :to-be t))
 
-  (it "attributes print in setUpAll to the first test in that group"
+  ;; Dart reports setUpAll/tearDownAll as synthetic tests "(setUpAll)"/"(tearDownAll)".
+  ;; Logs are attributed to these synthetic tests, not to real tests in the group.
+
+  ;; Dart reports setUpAll/tearDownAll as synthetic tests "(setUpAll)"/"(tearDownAll)".
+  ;; Logs are attributed to these synthetic tests, not to real tests in the group.
+
+  (it "attributes print in setUpAll to the synthetic (setUpAll) test"
+    (let* ((log (verdict-dart-test--find-log verdict-dart-test--main-events "log from setUpAll"))
+           (log-id (plist-get log :id))
+           (start (seq-find (lambda (ev)
+                              (and (eq (plist-get ev :type) :test-start)
+                                   (equal (plist-get ev :id) log-id)))
+                            verdict-dart-test--main-events)))
+      (expect start :not :to-be nil)
+      (expect (plist-get start :name) :to-equal "(setUpAll)")))
+
+  (it "does not attribute the setUpAll print to real tests in the group"
     (expect (verdict-dart-test--log-goes-to-test-p
              verdict-dart-test--main-events "log from setUpAll" "first test after setUpAll")
-            :to-be t))
-
-  (it "does not attribute the setUpAll print to later tests in the group"
+            :to-be nil)
     (expect (verdict-dart-test--log-goes-to-test-p
              verdict-dart-test--main-events "log from setUpAll" "second test after setUpAll")
             :to-be nil))
 
-  (it "attributes print in tearDownAll to the last test in that group"
-    (expect (verdict-dart-test--log-goes-to-test-p
-             verdict-dart-test--main-events "log from tearDownAll" "last test before tearDownAll")
-            :to-be t))
+  (it "attributes print in tearDownAll to the synthetic (tearDownAll) test"
+    (let* ((log (verdict-dart-test--find-log verdict-dart-test--main-events "log from tearDownAll"))
+           (log-id (plist-get log :id))
+           (start (seq-find (lambda (ev)
+                              (and (eq (plist-get ev :type) :test-start)
+                                   (equal (plist-get ev :id) log-id)))
+                            verdict-dart-test--main-events)))
+      (expect start :not :to-be nil)
+      (expect (plist-get start :name) :to-equal "(tearDownAll)")))
 
-  (it "does not attribute the tearDownAll print to earlier tests in the group"
+  (it "does not attribute the tearDownAll print to real tests in the group"
     (expect (verdict-dart-test--log-goes-to-test-p
              verdict-dart-test--main-events "log from tearDownAll" "first test before tearDownAll")
+            :to-be nil)
+    (expect (verdict-dart-test--log-goes-to-test-p
+             verdict-dart-test--main-events "log from tearDownAll" "last test before tearDownAll")
             :to-be nil))
 
   (it "attributes print in tearDown to each test individually"
@@ -421,12 +443,12 @@ and return the resulting verdict events in arrival order."
     (expect (verdict-dart-test--find-start verdict-dart-test--teardown-all-events "a test")
             :not :to-be nil))
 
-  (it "fails the test when tearDownAll throws"
+  (it "passes 'a test' itself (tearDownAll is a separate synthetic test)"
     (expect (verdict-dart-test--result verdict-dart-test--teardown-all-events "a test")
-            :to-be 'failed))
+            :to-be 'passed))
 
-  (it "emits an error :log attributed to the test"
-    (let ((logs (verdict-dart-test--logs-for-test verdict-dart-test--teardown-all-events "a test")))
+  (it "emits an error :log attributed to the synthetic (tearDownAll) test"
+    (let ((logs (verdict-dart-test--logs-for-test verdict-dart-test--teardown-all-events "(tearDownAll)")))
       (expect logs :not :to-be nil)
       (expect (plist-get (car logs) :severity) :to-be 'error)))
 

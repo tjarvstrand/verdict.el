@@ -1,6 +1,6 @@
-{"protocolVersion":"0.1.1","runnerVersion":"1.30.0","pid":74437,"type":"start","time":0}
+{"protocolVersion":"0.1.1","runnerVersion":"1.30.0","pid":4384,"type":"start","time":0}
 {"suite":{"id":0,"platform":"vm","path":"test/fails_no_tests.dart"},"type":"suite","time":0}
 {"test":{"id":1,"name":"loading test/fails_no_tests.dart","suiteID":0,"groupIDs":[],"metadata":{"skip":false,"skipReason":null},"line":null,"column":null,"url":null},"type":"testStart","time":0}
 {"count":1,"time":3,"type":"allSuites"}
-{"testID":1,"result":"success","skipped":false,"hidden":true,"type":"testDone","time":144}
-{"success":true,"type":"done","time":148}
+{"testID":1,"result":"success","skipped":false,"hidden":true,"type":"testDone","time":128}
+{"success":true,"type":"done","time":133}

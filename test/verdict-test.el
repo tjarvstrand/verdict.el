@@ -8,15 +8,17 @@
 (defun verdict-test--reset ()
   "Reset all verdict global state for test isolation."
   (clrhash verdict--nodes)
-  (setq verdict--root-ids   nil
-        verdict--render-timer nil
+  (setq verdict--root-ids     nil
+        verdict--render-timer  nil
         verdict--spinner-timer nil
         verdict--spinner-frame 0
-        verdict--partial      ""
-        verdict--proc         nil
-        verdict--last-command nil
-        verdict--backend      nil
-        verdict-model         nil))
+        verdict--partial       ""
+        verdict--proc          nil
+        verdict--proc-backend  nil
+        verdict--last-backend  nil
+        verdict--last-context  nil
+        verdict--backends      nil
+        verdict-model          nil))
 
 (defun verdict-test--node (id &rest props)
   "Store a node with ID and PROPS in verdict--nodes and return it."
@@ -112,21 +114,27 @@
 (describe "verdict-register-backend"
   (before-each (verdict-test--reset))
 
-  (it "stores :command-fn"
-    (let ((cmd-fn (lambda (_) nil)))
-      (verdict-register-backend cmd-fn (lambda (_) nil))
-      (expect (plist-get verdict--backend :command-fn) :to-be cmd-fn)))
+  (it "stores :context-fn in the backend plist"
+    (let ((ctx-fn (lambda (_) nil)))
+      (verdict-register-backend 'some-mode ctx-fn #'ignore #'ignore)
+      (let ((backend (cdar verdict--backends)))
+        (expect (plist-get backend :context-fn) :to-be ctx-fn))))
 
-  (it "stores :line-handler"
+  (it "stores :command-fn in the backend plist"
+    (let ((cmd-fn (lambda (_ _) nil)))
+      (verdict-register-backend 'some-mode #'ignore cmd-fn #'ignore)
+      (let ((backend (cdar verdict--backends)))
+        (expect (plist-get backend :command-fn) :to-be cmd-fn))))
+
+  (it "stores :line-handler in the backend plist"
     (let ((handler (lambda (_) nil)))
-      (verdict-register-backend (lambda (_) nil) handler)
-      (expect (plist-get verdict--backend :line-handler) :to-be handler)))
+      (verdict-register-backend 'some-mode #'ignore #'ignore handler)
+      (let ((backend (cdar verdict--backends)))
+        (expect (plist-get backend :line-handler) :to-be handler))))
 
-  (it "replaces a previously registered backend"
-    (verdict-register-backend (lambda (_) 'old) (lambda (_) nil))
-    (let ((new-fn (lambda (_) 'new)))
-      (verdict-register-backend new-fn (lambda (_) nil))
-      (expect (plist-get verdict--backend :command-fn) :to-be new-fn))))
+  (it "stores the predicate as the car of the entry"
+    (verdict-register-backend 'dart-ts-mode #'ignore #'ignore #'ignore)
+    (expect (caar verdict--backends) :to-be 'dart-ts-mode)))
 
 ;;; verdict-reset
 
@@ -453,39 +461,39 @@
 
   (it "calls the handler for a single complete line"
     (let ((received nil))
-      (verdict-register-backend (lambda (_) nil) (lambda (line) (push line received)))
+      (setq verdict--proc-backend (list :line-handler (lambda (line) (push line received))))
       (verdict--filter nil "hello\n")
       (expect received :to-equal '("hello"))))
 
   (it "buffers a partial line without calling the handler"
     (let ((received nil))
-      (verdict-register-backend (lambda (_) nil) (lambda (line) (push line received)))
+      (setq verdict--proc-backend (list :line-handler (lambda (line) (push line received))))
       (verdict--filter nil "partial")
       (expect received :to-be nil)
       (expect verdict--partial :to-equal "partial")))
 
   (it "combines a buffered partial with the next chunk to form a complete line"
     (let ((received nil))
-      (verdict-register-backend (lambda (_) nil) (lambda (line) (push line received)))
+      (setq verdict--proc-backend (list :line-handler (lambda (line) (push line received))))
       (verdict--filter nil "hel")
       (verdict--filter nil "lo\n")
       (expect received :to-equal '("hello"))))
 
   (it "handles multiple complete lines in one chunk"
     (let ((received nil))
-      (verdict-register-backend (lambda (_) nil) (lambda (line) (push line received)))
+      (setq verdict--proc-backend (list :line-handler (lambda (line) (push line received))))
       (verdict--filter nil "line1\nline2\nline3\n")
       (expect (reverse received) :to-equal '("line1" "line2" "line3"))))
 
   (it "retains a trailing partial after processing complete lines"
     (let ((received nil))
-      (verdict-register-backend (lambda (_) nil) (lambda (line) (push line received)))
+      (setq verdict--proc-backend (list :line-handler (lambda (line) (push line received))))
       (verdict--filter nil "a\nb\npartial")
       (expect (reverse received) :to-equal '("a" "b"))
       (expect verdict--partial :to-equal "partial")))
 
   (it "handles an empty chunk without errors"
-    (verdict-register-backend (lambda (_) nil) (lambda (_) nil))
+    (setq verdict--proc-backend (list :line-handler #'ignore))
     (expect (verdict--filter nil "") :not :to-throw)))
 
 ;;; verdict--sentinel
@@ -497,7 +505,7 @@
 
   (it "flushes a non-empty partial buffer through the handler"
     (let ((received nil))
-      (verdict-register-backend (lambda (_) nil) (lambda (line) (push line received)))
+      (setq verdict--proc-backend (list :line-handler (lambda (line) (push line received))))
       (setq verdict--partial "leftover")
       (verdict--sentinel nil "finished\n")
       (expect received :to-equal '("leftover"))
@@ -505,18 +513,20 @@
 
   (it "does not call the handler when partial is empty"
     (let ((call-count 0))
-      (verdict-register-backend (lambda (_) nil) (lambda (_) (cl-incf call-count)))
+      (setq verdict--proc-backend (list :line-handler (lambda (_) (cl-incf call-count))))
       (setq verdict--partial "")
       (verdict--sentinel nil "finished\n")
       (expect call-count :to-be 0)))
 
   (it "calls verdict-stop when the proc matches verdict--proc"
+    (setq verdict--proc-backend (list :line-handler #'ignore))
     (let ((proc 'fake-proc))
       (setq verdict--proc proc)
       (verdict--sentinel proc "finished\n")
       (expect 'verdict-stop :to-have-been-called)))
 
   (it "does not call verdict-stop for a stale proc"
+    (setq verdict--proc-backend (list :line-handler #'ignore))
     (setq verdict--proc 'current-proc)
     (verdict--sentinel 'old-proc "finished\n")
     (expect 'verdict-stop :not :to-have-been-called)))
@@ -607,49 +617,62 @@
     (spy-on 'verdict--launch))
 
   (it "signals an error when no backend is registered"
-    (expect (verdict--run :project) :to-throw 'error))
+    (expect (verdict--run :project nil) :to-throw 'error))
 
-  (it "calls command-fn with the given scope"
-    (let ((received-scope nil)
-          (spec '(:command ("echo") :directory "/tmp" :name "test")))
-      (verdict-register-backend
-       (lambda (scope) (setq received-scope scope) spec)
-       (lambda (_) nil))
-      (verdict--run :project)
+  (it "calls context-fn with the given scope"
+    (let* ((received-scope nil)
+           (context '(:project "/tmp" :file nil :test-name nil :name "test"))
+           (ctx-fn  (lambda (scope) (setq received-scope scope) context)))
+      (verdict-register-backend (lambda () t) ctx-fn #'ignore #'ignore)
+      (verdict--run :project nil)
       (expect received-scope :to-be :project)))
 
-  (it "stores the command result in verdict--last-command"
-    (let ((spec '(:command ("echo") :directory "/tmp" :name "test")))
-      (verdict-register-backend (lambda (_) spec) (lambda (_) nil))
-      (verdict--run :file)
-      (expect verdict--last-command :to-equal spec)))
+  (it "stores the backend in verdict--last-backend"
+    (let ((context '(:project "/tmp")))
+      (verdict-register-backend (lambda () t) (lambda (_) context) #'ignore #'ignore)
+      (verdict--run :file nil)
+      (expect verdict--last-backend :not :to-be nil)
+      (expect (plist-get verdict--last-backend :context-fn) :not :to-be nil)))
 
-  (it "calls verdict--launch with the command spec"
-    (let ((spec '(:command ("echo") :directory "/tmp" :name "test")))
-      (verdict-register-backend (lambda (_) spec) (lambda (_) nil))
-      (verdict--run :file)
-      (expect 'verdict--launch :to-have-been-called-with spec))))
+  (it "stores the context in verdict--last-context"
+    (let ((context '(:project "/tmp" :file "f.dart")))
+      (verdict-register-backend (lambda () t) (lambda (_) context) #'ignore #'ignore)
+      (verdict--run :file nil)
+      (expect verdict--last-context :to-equal context)))
 
-(describe "verdict-rerun"
+  (it "calls verdict--launch with backend, context, and debug flag"
+    (let ((context '(:project "/tmp")))
+      (verdict-register-backend (lambda () t) (lambda (_) context) #'ignore #'ignore)
+      (verdict--run :file nil)
+      (expect 'verdict--launch :to-have-been-called-with
+              verdict--last-backend context nil))))
+
+(describe "verdict-run-last"
   (before-each
     (verdict-test--reset)
     (spy-on 'verdict--launch))
 
   (it "signals an error when there is no previous run"
-    (expect (verdict-rerun) :to-throw 'error))
+    (expect (verdict-run-last) :to-throw 'error))
 
-  (it "calls verdict--launch with the stored command spec"
-    (let ((spec '(:command ("dart" "test") :directory "/proj" :name "rerun")))
-      (setq verdict--last-command spec)
-      (verdict-rerun)
-      (expect 'verdict--launch :to-have-been-called-with spec)))
+  (it "calls verdict--launch with the stored backend and context"
+    (let ((backend (list :context-fn #'ignore :command-fn #'ignore :line-handler #'ignore))
+          (context '(:project "/proj" :name "rerun")))
+      (setq verdict--last-backend backend
+            verdict--last-context context)
+      (verdict-run-last)
+      (expect 'verdict--launch :to-have-been-called-with backend context nil)))
 
-  (it "does not call command-fn again"
+  (it "does not call context-fn again"
     (let ((call-count 0)
-          (spec '(:command ("echo") :directory "/tmp" :name "test")))
-      (verdict-register-backend (lambda (_) (cl-incf call-count) spec) (lambda (_) nil))
-      (setq verdict--last-command spec)
-      (verdict-rerun)
+          (context '(:project "/tmp")))
+      (verdict-register-backend
+       (lambda () t)
+       (lambda (_) (cl-incf call-count) context)
+       #'ignore #'ignore)
+      (setq verdict--last-backend (cdar verdict--backends)
+            verdict--last-context context)
+      (verdict-run-last)
       (expect call-count :to-be 0))))
 
 ;;; Output buffer (verdict--show-output)

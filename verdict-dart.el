@@ -246,7 +246,7 @@ Skips root groups (those with empty names)."
                                  'skipped
                                (pcase (gethash "result" ev)
                                  ("success" 'passed)
-                                 ("failure" 'failed)
+                                 ("error"   (if loading 'error 'failed))
                                  (_         'error)))))
                ;; Skip successful loading tests — suite status is aggregated from children
                (unless (and loading (eq result 'passed))

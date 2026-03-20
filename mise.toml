@@ -1,0 +1,42 @@
+[tasks.test]
+description = "Run all buttercup tests"
+depends = ["test:verdict", "test:verdict-dart"]
+
+[tasks."test:verdict"]
+description = "Run verdict core tests"
+depends = ["deps"]
+run = """
+emacs -batch \
+  --eval '(setq package-user-dir (expand-file-name ".packages" default-directory))' \
+  --eval '(package-initialize)' \
+  -L . \
+  -L test \
+  -l buttercup \
+  -l verdict-test \
+  -f buttercup-run
+"""
+
+[tasks."test:verdict-dart"]
+description = "Run verdict-dart tests"
+depends = ["deps"]
+run = """
+emacs -batch \
+  --eval '(setq package-user-dir (expand-file-name ".packages" default-directory))' \
+  --eval '(package-initialize)' \
+  -L . \
+  -L test \
+  -l buttercup \
+  -l verdict-dart-test \
+  -f buttercup-run
+"""
+
+[tasks.deps]
+description = "Install test dependencies"
+run = """
+emacs -batch \
+  --eval '(setq package-user-dir (expand-file-name ".packages" default-directory))' \
+  --eval '(package-initialize)' \
+  --eval '(add-to-list (quote package-archives) (cons "melpa" "https://melpa.org/packages/") t)' \
+  --eval '(package-refresh-contents)' \
+  --eval '(dolist (pkg (quote (buttercup treemacs dash s f yaml))) (unless (package-installed-p pkg) (package-install pkg)))'
+"""
