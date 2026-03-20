@@ -12,8 +12,10 @@
 ;; - Fix keybindings and mouse actions
 ;; - Mode line spinner
 ;; - Mode line result indicator
-;; - Ootput filter
+;; - Output filter
 ;; - Jump to next failure
+;; - Add a module scope
+;; - Keybinding/button to rerun group/test from verdict buffer
 
 ;;; Faces
 
@@ -467,7 +469,8 @@ PREV is the node's :output before this message; used to add a newline separator.
           (when (fboundp 'hl-line-highlight)
             (hl-line-highlight)))
       (treemacs-initialize verdict-root :with-expand-depth 99)
-      (setq-local mode-line-format " %b"))
+      (setq-local mode-line-format " %b")
+      (local-set-key (kbd "M-RET") #'verdict--visit))
     (current-buffer)))
 
 ;;; Public API
