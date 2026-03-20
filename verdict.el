@@ -791,16 +791,16 @@ DEBUG is passed to the backend's command function."
 
 (defvar verdict-mode-map
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "C-c v t") #'verdict-run-at-point)
-    (define-key map (kbd "C-c v g") #'verdict-run-group)
-    (define-key map (kbd "C-c v f") #'verdict-run-file)
-    (define-key map (kbd "C-c v p") #'verdict-run-project)
-    (define-key map (kbd "C-c v r") #'verdict-run-last)
-    (define-key map (kbd "C-c v T") #'verdict-debug-at-point)
-    (define-key map (kbd "C-c v G") #'verdict-debug-group)
-    (define-key map (kbd "C-c v F") #'verdict-debug-file)
-    (define-key map (kbd "C-c v P") #'verdict-debug-project)
-    (define-key map (kbd "C-c v R") #'verdict-debug-last)
+    (define-key map (kbd "C-c t t") #'verdict-run-at-point)
+    (define-key map (kbd "C-c t g") #'verdict-run-group)
+    (define-key map (kbd "C-c t f") #'verdict-run-file)
+    (define-key map (kbd "C-c t p") #'verdict-run-project)
+    (define-key map (kbd "C-c t r") #'verdict-run-last)
+    (define-key map (kbd "C-c t T") #'verdict-debug-at-point)
+    (define-key map (kbd "C-c t G") #'verdict-debug-group)
+    (define-key map (kbd "C-c t F") #'verdict-debug-file)
+    (define-key map (kbd "C-c t P") #'verdict-debug-project)
+    (define-key map (kbd "C-c t R") #'verdict-debug-last)
     map))
 
 (define-minor-mode verdict-mode
