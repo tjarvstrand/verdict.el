@@ -9,6 +9,21 @@
 
 ;;; Customization
 
+(defun verdict-dart--debug-default (context)
+  "Launch a debug session using dape if available.
+CONTEXT is a plist; see `verdict-dart-debug-fn'."
+  (if (require 'dape nil t)
+      (verdict-dart--dape-debug context)
+    (error "Install dape or set `verdict-dart-debug-fn' to enable debug mode")))
+
+(defcustom verdict-dart-debug-fn #'verdict-dart--debug-default
+  "Function to launch a dart test debug session.
+Called with a single argument: a plist with keys
+:project, :file, :test-name, :name, :runner (\"dart\" or \"flutter\").
+The function should start a debug session (e.g. via dape or dap-mode).
+The default uses dape if available, otherwise signals an error."
+  :type 'function)
+
 (defvar verdict-dart-flutter-packages '("flutter_test")
   "List of package names whose import indicates a Flutter test file.
 When a test file imports any of these packages, `flutter test' is
@@ -139,11 +154,12 @@ Returns (:kind KIND :name NAME :line LINE) or nil."
 
 (defun verdict-dart--innermost-group (group-ids)
   "Return the innermost known group ID from GROUP-IDS, or nil.
+GROUP-IDS is a sequence (list or vector).
 Skips root groups (those with empty names)."
-  (-first (lambda (id)
-            (--> (gethash id verdict-dart--group-names)
-                 (not (string-empty-p it))))
-          (reverse group-ids)))
+  (seq-find (lambda (id)
+              (--> (gethash id verdict-dart--group-names)
+                   (not (string-empty-p it))))
+            (reverse (seq-into group-ids 'list))))
 
 (defun verdict-dart--resolve-test-id (test-id)
   "Return TEST-ID, or the suite ID if TEST-ID is a loading test."
@@ -156,109 +172,105 @@ Skips root groups (those with empty names)."
 
 ;;; JSON → Event Translation
 
+(defun verdict-dart--handle-event (event)
+  "Dispatch a parsed dart test EVENT (plist) to `verdict-event'.
+EVENT uses keyword keys, vectors for arrays, and :json-false for false."
+  (pcase (plist-get event :type)
+    ("start" nil)
+
+    ("suite"
+     (let* ((suite    (plist-get event :suite))
+            (suite-id (plist-get suite :id))
+            (path     (plist-get suite :path)))
+       (puthash path suite-id verdict-dart--file-suite-ids)
+       (verdict-event (list :type :group
+                            :id   suite-id
+                            :name (file-name-nondirectory path)
+                            :file path))))
+
+    ("group"
+     (let* ((group       (plist-get event :group))
+            (parent-id   (plist-get group :parentID))
+            (id          (plist-get group :id))
+            (name        (plist-get group :name))
+            (parent-name (and (numberp parent-id)
+                              (gethash parent-id verdict-dart--group-names))))
+       ;; Always store full name so children can strip it.
+       (when (numberp id)
+         (puthash id name verdict-dart--group-names))
+       (when (and parent-id (not (string-empty-p name)))
+         (verdict-event (list :type       :group
+                              :id         id
+                              :parent-id  (if-let ((pname (gethash parent-id verdict-dart--group-names))
+                                                   ((not (string-empty-p pname))))
+                                              parent-id
+                                            (plist-get group :suiteID))
+                              :name       (if parent-name
+                                              (verdict-dart--strip-parent-prefix parent-name name)
+                                            name)
+                              :test-count (plist-get group :testCount)
+                              :line       (plist-get group :line)
+                              :file       (verdict-dart--url-to-file (plist-get group :url)))))))
+
+    ("testStart"
+     (let* ((test      (plist-get event :test))
+            (id        (plist-get test :id))
+            (name      (plist-get test :name))
+            (suite-id  (plist-get test :suiteID))
+            (group-ids (plist-get test :groupIDs)))
+       (if (seq-empty-p group-ids)
+           (puthash id suite-id verdict-dart--loading-tests)
+         (let ((parent-name (gethash (seq-elt group-ids (1- (length group-ids)))
+                                     verdict-dart--group-names)))
+           (verdict-event (list :type      :test-start
+                                :id        id
+                                :parent-id (or (verdict-dart--innermost-group group-ids) suite-id)
+                                :name      (if parent-name
+                                               (verdict-dart--strip-parent-prefix parent-name name)
+                                             name)
+                                :line      (plist-get test :line)
+                                :file      (verdict-dart--url-to-file (plist-get test :url))))))))
+
+    ("print"
+     (verdict-event (list :type     :log
+                          :severity 'info
+                          :id       (verdict-dart--resolve-test-id (plist-get event :testID))
+                          :message  (plist-get event :message))))
+
+    ("error"
+     (verdict-event (list :type     :log
+                          :severity 'error
+                          :id       (verdict-dart--resolve-test-id (plist-get event :testID))
+                          :message  (concat (plist-get event :error) "\n" (plist-get event :stackTrace)))))
+
+    ("testDone"
+     (let* ((raw-id  (plist-get event :testID))
+            (loading (gethash raw-id verdict-dart--loading-tests))
+            (id      (or loading raw-id))
+            (result  (if (eq (plist-get event :skipped) t)
+                         'skipped
+                       (pcase (plist-get event :result)
+                         ("success" 'passed)
+                         ("error"   (if loading 'error 'failed))
+                         (_         'error)))))
+       ;; Skip successful loading tests — suite status is aggregated from children
+       (unless (and loading (eq result 'passed))
+         (verdict-event (list :type   :test-done
+                              :id     id
+                              :result result)))))
+
+    ("done"
+     (verdict-event (list :type    :done
+                          :success (plist-get event :success))))
+
+    (_ nil)))
+
 (defun verdict-dart--handle-line (line)
   "Parse one JSON LINE from `dart test -r json' and dispatch to `verdict-event'."
   (condition-case err
       (unless (string-empty-p line)
-        (let* ((ev   (json-parse-string line :object-type 'hash-table :array-type 'list :null-object nil))
-               (type (gethash "type" ev)))
-          (pcase type
-            ("start" nil)
-
-            ("suite"
-             (let* ((suite    (gethash "suite" ev))
-                    (suite-id (gethash "id" suite))
-                    (path     (gethash "path" suite)))
-               (puthash path suite-id verdict-dart--file-suite-ids)
-               (verdict-event (list :type      :group
-                                    :id        suite-id
-                                    :name      (file-name-nondirectory path)
-                                    :file      path))))
-
-            ("group"
-             (let* ((group       (gethash "group" ev))
-                    (parent-id   (gethash "parentID" group))
-                    (id          (gethash "id" group))
-                    (name        (gethash "name" group))
-                    (parent-name (and (numberp parent-id)
-                                      (gethash parent-id verdict-dart--group-names)))
-                    (label       (if parent-name
-                                     (verdict-dart--strip-parent-prefix parent-name name)
-                                   name)))
-               ;; Always store full name so children can strip it.
-               (when (numberp id)
-                 (puthash id name verdict-dart--group-names))
-               (when (and parent-id (not (string-empty-p name)))
-                 (let ((suite-id (gethash "suiteID" group)))
-                   (verdict-event (list :type       :group
-                                        :id         id
-                                        :parent-id  (if-let ((pname (gethash parent-id verdict-dart--group-names))
-                                                             ((not (string-empty-p pname))))
-                                                        parent-id
-                                                      suite-id)
-                                        :name       label
-                                        :test-count (gethash "testCount" group)
-                                        :line       (gethash "line" group)
-                                        :file       (verdict-dart--url-to-file (gethash "url" group))))))))
-
-            ("testStart"
-             (let* ((test      (gethash "test" ev))
-                    (id        (gethash "id" test))
-                    (name      (gethash "name" test))
-                    (suite-id  (gethash "suiteID" test))
-                    (group-ids (gethash "groupIDs" test)))
-               (if (null group-ids)
-                   (puthash id suite-id verdict-dart--loading-tests)
-                 (let* ((parent-id   (or (verdict-dart--innermost-group group-ids) suite-id))
-                        (parent-name (-> group-ids
-                                         last
-                                         car
-                                         (gethash verdict-dart--group-names)))
-                        (label       (if parent-name
-                                         (verdict-dart--strip-parent-prefix parent-name name)
-                                       name)))
-                   (verdict-event (list :type      :test-start
-                                        :id        id
-                                        :parent-id parent-id
-                                        :name      label
-                                        :line      (gethash "line" test)
-                                        :file      (verdict-dart--url-to-file (gethash "url" test))))))))
-
-            ("print"
-             (let ((id (verdict-dart--resolve-test-id (gethash "testID" ev))))
-               (verdict-event (list :type         :log
-                                    :severity     'info
-                                    :id           id
-                                    :message      (gethash "message" ev)))))
-
-            ("error"
-             (let ((id (verdict-dart--resolve-test-id (gethash "testID" ev))))
-               (verdict-event (list :type        :log
-                                    :severity    'error
-                                    :id          id
-                                    :message     (concat (gethash "error" ev) "\n" (gethash "stackTrace" ev))))))
-
-            ("testDone"
-             (let* ((raw-id  (gethash "testID" ev))
-                    (loading (gethash raw-id verdict-dart--loading-tests))
-                    (id      (or loading raw-id))
-                    (result  (if (eq (gethash "skipped" ev) t)
-                                 'skipped
-                               (pcase (gethash "result" ev)
-                                 ("success" 'passed)
-                                 ("error"   (if loading 'error 'failed))
-                                 (_         'error)))))
-               ;; Skip successful loading tests — suite status is aggregated from children
-               (unless (and loading (eq result 'passed))
-                 (verdict-event (list :type    :test-done
-                                      :id      id
-                                      :result  result)))))
-
-            ("done"
-             (verdict-event (list :type    :done
-                                  :success (gethash "success" ev))))
-
-            (_ nil))))
+        (verdict-dart--handle-event
+         (json-parse-string line :object-type 'plist :false-object :json-false :null-object nil)))
     (error
      (message "verdict-dart: error parsing line: %s\n%s" line (error-message-string err)))))
 
@@ -325,16 +337,19 @@ checking the project's pubspec.yaml."
 (defun verdict-dart--command-fn (context debug)
   "Build dart/flutter test command from CONTEXT and DEBUG flag.
 Returns a plist with :command :directory :name."
-  (when debug
-    (error "verdict-dart: debug not yet supported"))
-  (let* ((file    (plist-get context :file))
-         (name    (plist-get context :test-name))
-         (runner  (if (verdict-dart--use-flutter-p context) "flutter" "dart")))
-    (list :command   (append (list runner "test" "-r" "json")
-                             (when name (list "--plain-name" name))
-                             (when file (list file)))
-          :directory (plist-get context :project)
-          :name      (plist-get context :name))))
+  (let* ((file   (plist-get context :file))
+         (name   (plist-get context :test-name))
+         (runner (if (verdict-dart--use-flutter-p context) "flutter" "dart")))
+    (if debug
+        (let ((debug-context (plist-put (copy-sequence context) :runner runner)))
+          (list :command   (lambda () (funcall verdict-dart-debug-fn debug-context))
+                :directory (plist-get context :project)
+                :name      (plist-get context :name)))
+      (list :command   (append (list runner "test" "-r" "json")
+                               (when name (list "--plain-name" name))
+                               (when file (list file)))
+            :directory (plist-get context :project)
+            :name      (plist-get context :name)))))
 
 ;;; Backend Registration
 
@@ -344,6 +359,38 @@ Returns a plist with :command :directory :name."
                          #'verdict-dart--handle-line)
 
 (add-hook 'dart-ts-mode-hook #'verdict-mode)
+
+;;; Dape Integration
+
+(defun verdict-dart--dape-debug (context)
+  "Launch a dape debug session for a dart/flutter test.
+CONTEXT is a plist with :project, :file, :test-name, :name, :runner."
+  (let* ((runner    (plist-get context :runner))
+         (file      (plist-get context :file))
+         (test-name (plist-get context :test-name))
+         (flutter-p (string= runner "flutter"))
+         (config    `(command ,runner
+                      command-args ("debug_adapter" "--test")
+                      command-cwd ,(plist-get context :project)
+                      :type "dart"
+                      :cwd "."
+                      ,@(when file (list :program file))
+                      ,@(when test-name
+                          (list :args (vector "--plain-name" test-name)))
+                      ,@(when flutter-p '(:toolArgs ["-d" "all"])))))
+    (dape config)))
+
+(with-eval-after-load 'dape
+  (cl-defmethod dape-handle-event
+    (_conn (_event (eql dart.testNotification)) body)
+    "Forward Dart test notifications to verdict."
+    (verdict-dart--handle-event body))
+
+  (cl-defmethod dape-handle-event :after
+    (_conn (_event (eql terminated)) _body)
+    "Stop verdict when the dape session terminates."
+    (when (eq verdict--run-state 'running)
+      (verdict-stop))))
 
 (provide 'verdict-dart)
 ;;; verdict-dart.el ends here

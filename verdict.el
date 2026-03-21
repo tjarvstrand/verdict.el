@@ -810,7 +810,7 @@ DEBUG is passed to the backend's command function."
 
 ;;; Debug
 
-(defun verdict-debug-at-point ()
+(defun verdict--debug-node-at-point ()
   "Print debug info about the verdict node at point."
   (interactive)
   (let ((btn (treemacs-node-at-point)))
