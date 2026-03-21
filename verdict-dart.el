@@ -183,10 +183,10 @@ EVENT uses keyword keys, vectors for arrays, and :json-false for false."
             (suite-id (plist-get suite :id))
             (path     (plist-get suite :path)))
        (puthash path suite-id verdict-dart--file-suite-ids)
-       (verdict-event (list :type :group
-                            :id   suite-id
-                            :name (file-name-nondirectory path)
-                            :file path))))
+       (verdict-event (list :type  :group
+                            :id    suite-id
+                            :label (file-name-nondirectory path)
+                            :file  path))))
 
     ("group"
      (let* ((group       (plist-get event :group))
@@ -199,18 +199,20 @@ EVENT uses keyword keys, vectors for arrays, and :json-false for false."
        (when (numberp id)
          (puthash id name verdict-dart--group-names))
        (when (and parent-id (not (string-empty-p name)))
-         (verdict-event (list :type       :group
-                              :id         id
-                              :parent-id  (if-let ((pname (gethash parent-id verdict-dart--group-names))
-                                                   ((not (string-empty-p pname))))
-                                              parent-id
-                                            (plist-get group :suiteID))
-                              :name       (if parent-name
-                                              (verdict-dart--strip-parent-prefix parent-name name)
-                                            name)
-                              :test-count (plist-get group :testCount)
-                              :line       (plist-get group :line)
-                              :file       (verdict-dart--url-to-file (plist-get group :url)))))))
+         (let ((label (if parent-name
+                          (verdict-dart--strip-parent-prefix parent-name name)
+                        name)))
+           (verdict-event (list :type       :group
+                                :id         id
+                                :parent-id  (if-let ((pname (gethash parent-id verdict-dart--group-names))
+                                                     ((not (string-empty-p pname))))
+                                                parent-id
+                                              (plist-get group :suiteID))
+                                :name       name
+                                :label      (unless (string= label name) label)
+                                :test-count (plist-get group :testCount)
+                                :line       (plist-get group :line)
+                                :file       (verdict-dart--url-to-file (plist-get group :url))))))))
 
     ("testStart"
      (let* ((test      (plist-get event :test))
@@ -220,14 +222,16 @@ EVENT uses keyword keys, vectors for arrays, and :json-false for false."
             (group-ids (plist-get test :groupIDs)))
        (if (seq-empty-p group-ids)
            (puthash id suite-id verdict-dart--loading-tests)
-         (let ((parent-name (gethash (seq-elt group-ids (1- (length group-ids)))
-                                     verdict-dart--group-names)))
+         (let* ((parent-name (gethash (seq-elt group-ids (1- (length group-ids)))
+                                      verdict-dart--group-names))
+                (label (if parent-name
+                           (verdict-dart--strip-parent-prefix parent-name name)
+                         name)))
            (verdict-event (list :type      :test-start
                                 :id        id
                                 :parent-id (or (verdict-dart--innermost-group group-ids) suite-id)
-                                :name      (if parent-name
-                                               (verdict-dart--strip-parent-prefix parent-name name)
-                                             name)
+                                :name      name
+                                :label     (unless (string= label name) label)
                                 :line      (plist-get test :line)
                                 :file      (verdict-dart--url-to-file (plist-get test :url))))))))
 

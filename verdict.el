@@ -13,7 +13,6 @@
 ;; - Output filter
 ;; - Jump to next failure
 ;; - Add a module scope
-;; - Keybinding/button to rerun group/test from verdict buffer
 ;; - Stop link/keybinding
 
 ;;; Faces
@@ -462,10 +461,48 @@ PREV is the node's :output before this message; used to add a newline separator.
                      'mouse-face 'highlight
                      'help-echo "Visit file")))
 
+(defun verdict--rerun-at-node ()
+  "Rerun the test/group at point in the verdict buffer."
+  (interactive)
+  (unless verdict--last-context (error "No previous verdict run to repeat"))
+  (unless verdict--last-backend (error "No previous verdict backend"))
+  (let* ((btn  (treemacs-node-at-point))
+         (item (treemacs-button-get btn :item))
+         (file (plist-get item :file))
+         (name (plist-get item :name))
+         (context (list :project   (plist-get verdict--last-context :project)
+                        :file      file
+                        :test-name name
+                        :name      (or name (when file (file-name-nondirectory file))))))
+    (verdict--launch verdict--last-backend context nil)))
+
+(defvar verdict--rerun-link-keymap
+  (let ((map (make-sparse-keymap)))
+    (define-key map [mouse-1] #'verdict--rerun-link-click)
+    map)
+  "Keymap for the rerun link icon in verdict nodes.")
+
+(defun verdict--rerun-link-click (event)
+  "Rerun the test/group whose rerun link was clicked."
+  (interactive "e")
+  (let ((pos (posn-point (event-start event))))
+    (when pos
+      (goto-char pos)
+      (verdict--rerun-at-node))))
+
+(defun verdict--rerun-link (item)
+  "Return a propertized rerun link string, or nil for output nodes."
+  (unless (plist-get item :source-id)
+    (propertize " ⟲" 'face 'link
+                      'keymap verdict--rerun-link-keymap
+                      'mouse-face 'highlight
+                      'help-echo "Rerun")))
+
 (defun verdict--node-label (item)
-  "Return the display label for ITEM, with a visit link if it has a file."
+  "Return the display label for ITEM, with visit and rerun links."
   (concat (plist-get item :label)
-          (verdict--visit-link (plist-get item :file))))
+          (verdict--visit-link (plist-get item :file))
+          (verdict--rerun-link item)))
 
 (defun verdict--toggle-or-show-output (&optional _arg)
   "Expand/collapse group nodes; show output for leaf nodes."
@@ -514,7 +551,8 @@ PREV is the node's :output before this message; used to add a newline separator.
             (hl-line-highlight)))
       (treemacs-initialize verdict-root :with-expand-depth 99)
       (setq-local mode-line-format verdict--mode-line-format)
-      (local-set-key (kbd "M-RET") #'verdict--visit))
+      (local-set-key (kbd "M-RET") #'verdict--visit)
+      (local-set-key (kbd "r") #'verdict--rerun-at-node))
     (current-buffer)))
 
 ;;; Public API
@@ -615,7 +653,7 @@ PREV is the node's :output before this message; used to add a newline separator.
 
 (defun verdict--maybe-save-buffer ()
   "Save the current buffer before a run, respecting `verdict-save-before-run'."
-  (when (buffer-modified-p)
+  (when (and (buffer-modified-p) (buffer-file-name))
     (pcase verdict-save-before-run
       ('yes (save-buffer))
       ('no  nil)
@@ -639,7 +677,9 @@ TYPE is one of :project :file :group :test. NAME is a string or nil."
   (verdict-reset)
   (setq verdict--run-state 'running)
   (verdict--spinner-start)
-  (display-buffer (verdict--render) '(nil (inhibit-same-window . t))))
+  (let ((buf (verdict--render)))
+    (unless (get-buffer-window buf)
+      (display-buffer buf '(nil (inhibit-same-window . t))))))
 
 (defun verdict-stop ()
   "Mark all running nodes as stopped and render."
@@ -665,8 +705,10 @@ EVENT must have a :type field with a keyword value."
     (:group
      (let* ((id        (plist-get event :id))
             (parent-id (plist-get event :parent-id))
+            (name      (plist-get event :name))
             (node      (list :id       id
-                             :label    (plist-get event :name)
+                             :name     name
+                             :label    (or (plist-get event :label) name)
                              :status   'running
                              :file     (plist-get event :file)
                              :line     (plist-get event :line)
@@ -679,8 +721,10 @@ EVENT must have a :type field with a keyword value."
     (:test-start
      (let* ((id        (plist-get event :id))
             (parent-id (plist-get event :parent-id))
+            (name      (plist-get event :name))
             (node      (list :id     id
-                             :label  (plist-get event :name)
+                             :name   name
+                             :label  (or (plist-get event :label) name)
                              :status 'running
                              :file   (plist-get event :file)
                              :line   (plist-get event :line))))

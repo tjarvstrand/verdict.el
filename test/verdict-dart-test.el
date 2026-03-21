@@ -64,17 +64,17 @@ and return the resulting verdict events in arrival order."
   (seq-filter (lambda (ev) (eq (plist-get ev :type) type)) events))
 
 (defun verdict-dart-test--find-start (events name)
-  "Return the :test-start event with :name NAME, or nil."
+  "Return the :test-start event whose display name matches NAME, or nil."
   (seq-find (lambda (ev)
               (and (eq (plist-get ev :type) :test-start)
-                   (equal (plist-get ev :name) name)))
+                   (equal (or (plist-get ev :label) (plist-get ev :name)) name)))
             events))
 
 (defun verdict-dart-test--find-group (events name)
-  "Return the :group event with :name NAME, or nil."
+  "Return the :group event whose display name matches NAME, or nil."
   (seq-find (lambda (ev)
               (and (eq (plist-get ev :type) :group)
-                   (equal (plist-get ev :name) name)))
+                   (equal (or (plist-get ev :label) (plist-get ev :name)) name)))
             events))
 
 (defun verdict-dart-test--result (events name)
@@ -303,7 +303,7 @@ and return the resulting verdict events in arrival order."
                                    (equal (plist-get ev :id) log-id)))
                             verdict-dart-test--main-events)))
       (expect start :not :to-be nil)
-      (expect (plist-get start :name) :to-equal "(setUpAll)")))
+      (expect (or (plist-get start :label) (plist-get start :name)) :to-equal "(setUpAll)")))
 
   (it "does not attribute the setUpAll print to real tests in the group"
     (expect (verdict-dart-test--log-goes-to-test-p
@@ -321,7 +321,7 @@ and return the resulting verdict events in arrival order."
                                    (equal (plist-get ev :id) log-id)))
                             verdict-dart-test--main-events)))
       (expect start :not :to-be nil)
-      (expect (plist-get start :name) :to-equal "(tearDownAll)")))
+      (expect (or (plist-get start :label) (plist-get start :name)) :to-equal "(tearDownAll)")))
 
   (it "does not attribute the tearDownAll print to real tests in the group"
     (expect (verdict-dart-test--log-goes-to-test-p
