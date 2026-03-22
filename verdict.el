@@ -9,7 +9,6 @@
 
 ;; TODO
 ;; - [Dart] Add links to stack traces in output
-;; - Add a module scope
 
 ;;; Faces
 
@@ -139,6 +138,17 @@ Defaults to `braille' if a suitable font was auto-detected at load time."
 (defcustom verdict-icon-error   "!" "Icon for errored tests."              :type 'string :group 'verdict)
 (defcustom verdict-icon-skipped "-" "Icon for skipped tests."              :type 'string :group 'verdict)
 (defcustom verdict-icon-stopped "⊘" "Icon for stopped tests."             :type 'string :group 'verdict)
+
+(defun verdict--default-project-root ()
+  "Return the project root using `project.el'."
+  (when-let ((proj (project-current t)))
+    (project-root proj)))
+
+(defcustom verdict-project-root-fn #'verdict--default-project-root
+  "Function to find the project root directory.
+Called with no arguments in the source buffer. Should return a directory path."
+  :type 'function
+  :group 'verdict)
 
 (defcustom verdict-save-before-run nil
   "How to handle unsaved changes in the current buffer before a test run.
@@ -887,10 +897,12 @@ DEBUG is passed to the backend's command function."
 (defun verdict-run-at-point ()   (interactive) (verdict--run :at-point nil))
 (defun verdict-run-group ()      (interactive) (verdict--run :group nil))
 (defun verdict-run-file ()       (interactive) (verdict--run :file nil))
+(defun verdict-run-module ()     (interactive) (verdict--run :module nil))
 (defun verdict-run-project ()    (interactive) (verdict--run :project nil))
 (defun verdict-debug-at-point () (interactive) (verdict--run :at-point t))
 (defun verdict-debug-group ()    (interactive) (verdict--run :group t))
 (defun verdict-debug-file ()     (interactive) (verdict--run :file t))
+(defun verdict-debug-module ()   (interactive) (verdict--run :module t))
 (defun verdict-debug-project ()  (interactive) (verdict--run :project t))
 
 (defun verdict-run-last ()
@@ -934,11 +946,13 @@ DEBUG is passed to the backend's command function."
     (define-key map (kbd "C-c t t") #'verdict-run-at-point)
     (define-key map (kbd "C-c t g") #'verdict-run-group)
     (define-key map (kbd "C-c t f") #'verdict-run-file)
+    (define-key map (kbd "C-c t m") #'verdict-run-module)
     (define-key map (kbd "C-c t p") #'verdict-run-project)
     (define-key map (kbd "C-c t r") #'verdict-run-last)
     (define-key map (kbd "C-c t T") #'verdict-debug-at-point)
     (define-key map (kbd "C-c t G") #'verdict-debug-group)
     (define-key map (kbd "C-c t F") #'verdict-debug-file)
+    (define-key map (kbd "C-c t M") #'verdict-debug-module)
     (define-key map (kbd "C-c t P") #'verdict-debug-project)
     (define-key map (kbd "C-c t R") #'verdict-debug-last)
     (define-key map (kbd "C-c t !") #'verdict-rerun-failed)

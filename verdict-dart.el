@@ -131,10 +131,10 @@ Returns (:kind KIND :name NAME :line LINE) or nil."
       (let ((full-name (mapconcat (lambda (c) (plist-get c :name)) calls " ")))
         (list :file buffer-file-name :name full-name)))))
 
-;;; Project Root
+;;; Module / Project Root
 
-(defun verdict-dart--project-root ()
-  "Return the project root by locating pubspec.yaml."
+(defun verdict-dart--module-root ()
+  "Return the module root by locating pubspec.yaml."
   (let ((dir (f-traverse-upwards
               (lambda (d) (f-exists-p (f-join d "pubspec.yaml")))
               (f-dirname buffer-file-name))))
@@ -291,7 +291,7 @@ Resets per-run parse state as a side effect."
   (if file-tests
       (let ((files (mapcar #'car file-tests))
             (names (mapcan #'cdr (mapcar #'copy-sequence file-tests))))
-        (list :project (verdict-dart--project-root)
+        (list :project (verdict-dart--module-root)
               :files   files
               :names   names
               :name    (car (or names files))))
@@ -304,8 +304,10 @@ Resets per-run parse state as a side effect."
                                                        (error "No group or test found at point")))
                                               :name))
                         (_ nil))))
-      (list :project (verdict-dart--project-root)
-            :files   (unless (eq scope :project) (list buf-file))
+      (list :project (pcase scope
+                       (:project (funcall verdict-project-root-fn))
+                       (_        (verdict-dart--module-root)))
+            :files   (unless (memq scope '(:module :project)) (list buf-file))
             :names   (when test-name (list test-name))
             :name    (or test-name (when buf-file (file-name-nondirectory buf-file)))))))
 
