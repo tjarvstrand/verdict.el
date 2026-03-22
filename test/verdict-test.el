@@ -621,7 +621,7 @@
 
   (it "calls context-fn with the given scope"
     (let* ((received-scope nil)
-           (context '(:project "/tmp" :file nil :test-name nil :name "test"))
+           (context '(:project "/tmp" :file nil :names nil :name "test"))
            (ctx-fn  (lambda (scope) (setq received-scope scope) context)))
       (verdict-register-backend (lambda () t) ctx-fn #'ignore #'ignore)
       (verdict--run :project nil)

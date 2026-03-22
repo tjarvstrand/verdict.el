@@ -205,7 +205,10 @@ PREDICATE is one of:
   - a regexp string      — matched against `buffer-name'
   - a function           — called with no args; non-nil means match
 BACKEND-PLIST keys:
-  :context-fn   — function (scope) → backend-specific context plist; called in source buffer
+  :context-fn   — function (scope &optional file-tests) → backend-specific context plist;
+                  called in source buffer.  When FILE-TESTS is provided (an alist
+                  of (FILE . (NAME ...)) entries), use it instead of deriving
+                  from the buffer.
   :command-fn   — function (context debug) → plist with :command :directory :name.
                   :command may be a list (verdict manages the process) or a function
                   (custom launch; fn must call `verdict-stop' when done)
@@ -466,14 +469,14 @@ PREV is the node's :output before this message; used to add a newline separator.
   (interactive)
   (unless verdict--last-context (error "No previous verdict run to repeat"))
   (unless verdict--last-backend (error "No previous verdict backend"))
-  (let* ((btn  (treemacs-node-at-point))
-         (item (treemacs-button-get btn :item))
-         (file (plist-get item :file))
-         (name (plist-get item :name))
-         (context (list :project   (plist-get verdict--last-context :project)
-                        :file      file
-                        :test-name name
-                        :name      (or name (when file (file-name-nondirectory file))))))
+  (let* ((btn        (treemacs-node-at-point))
+         (item       (treemacs-button-get btn :item))
+         (file       (plist-get item :file))
+         (name       (plist-get item :name))
+         (file-tests (when file
+                       (list (if name (list file name) (list file)))))
+         (context    (funcall (plist-get verdict--last-backend :context-fn)
+                              :file file-tests)))
     (verdict--launch verdict--last-backend context nil)))
 
 (defvar verdict--rerun-link-keymap
@@ -552,7 +555,8 @@ PREV is the node's :output before this message; used to add a newline separator.
       (treemacs-initialize verdict-root :with-expand-depth 99)
       (setq-local mode-line-format verdict--mode-line-format)
       (local-set-key (kbd "M-RET") #'verdict--visit)
-      (local-set-key (kbd "r") #'verdict--rerun-at-node))
+      (local-set-key (kbd "r") #'verdict--rerun-at-node)
+      (local-set-key (kbd "f") #'verdict-rerun-failed))
     (current-buffer)))
 
 ;;; Public API
@@ -829,6 +833,27 @@ DEBUG is passed to the backend's command function."
   (interactive)
   (unless verdict--last-context (error "No previous verdict run to repeat"))
   (verdict--launch verdict--last-backend verdict--last-context t))
+
+(defun verdict-rerun-failed ()
+  "Rerun only the failed tests from the last run."
+  (interactive)
+  (unless verdict--last-context (error "No previous verdict run to repeat"))
+  (unless verdict--last-backend (error "No previous verdict backend"))
+  (let ((file-tests nil))
+    (maphash (lambda (_id node)
+               (when (and (memq (plist-get node :status) '(failed error))
+                          (not (plist-member node :children))
+                          (plist-get node :name))
+                 (let* ((file  (plist-get node :file))
+                        (entry (assoc file file-tests)))
+                   (if entry
+                       (setcdr entry (cons (plist-get node :name) (cdr entry)))
+                     (push (list file (plist-get node :name)) file-tests)))))
+             verdict--nodes)
+    (unless file-tests (error "No failed tests to rerun"))
+    (let ((context (funcall (plist-get verdict--last-backend :context-fn)
+                            :file file-tests)))
+      (verdict--launch verdict--last-backend context nil))))
 
 
 ;;; Minor Mode

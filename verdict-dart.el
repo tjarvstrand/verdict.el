@@ -19,7 +19,7 @@ CONTEXT is a plist; see `verdict-dart-debug-fn'."
 (defcustom verdict-dart-debug-fn #'verdict-dart--debug-default
   "Function to launch a dart test debug session.
 Called with a single argument: a plist with keys
-:project, :file, :test-name, :name, :runner (\"dart\" or \"flutter\").
+:project, :files, :names, :name, :runner (\"dart\" or \"flutter\").
 The function should start a debug session (e.g. via dape or dap-mode).
 The default uses dape if available, otherwise signals an error."
   :type 'function)
@@ -280,38 +280,36 @@ EVENT uses keyword keys, vectors for arrays, and :json-false for false."
 
 ;;; Context and Command Functions
 
-(defun verdict-dart--context-fn (scope)
+(defun verdict-dart--context-fn (scope &optional file-tests)
   "Return a context plist for SCOPE, reading from the current buffer.
+When FILE-TESTS is provided (an alist of (FILE . (NAME ...)) entries),
+use it instead of deriving from the buffer.
 Resets per-run parse state as a side effect."
   (setq verdict-dart--group-names    (make-hash-table)
         verdict-dart--file-suite-ids (make-hash-table :test #'equal)
         verdict-dart--loading-tests  (make-hash-table :test #'equal))
-  (let* ((file      (buffer-file-name))
-         (test-name (pcase scope
-                      (:at-point (plist-get (or (verdict-dart--test-at-point)
-                                                (error "No test found at point"))
-                                            :name))
-                      (:group    (plist-get (car (or (verdict-dart--enclosing-calls)
-                                                     (error "No group or test found at point")))
-                                            :name))
-                      (_ nil))))
-    (list :project   (verdict-dart--project-root)
-          :file      (unless (eq scope :project) file)
-          :test-name test-name
-          :name      (or test-name (when file (file-name-nondirectory file))))))
+  (if file-tests
+      (let ((files (mapcar #'car file-tests))
+            (names (mapcan #'cdr (mapcar #'copy-sequence file-tests))))
+        (list :project (verdict-dart--project-root)
+              :files   files
+              :names   names
+              :name    (car (or names files))))
+    (let* ((buf-file  (buffer-file-name))
+           (test-name (pcase scope
+                        (:at-point (plist-get (or (verdict-dart--test-at-point)
+                                                  (error "No test found at point"))
+                                              :name))
+                        (:group    (plist-get (car (or (verdict-dart--enclosing-calls)
+                                                       (error "No group or test found at point")))
+                                              :name))
+                        (_ nil))))
+      (list :project (verdict-dart--project-root)
+            :files   (unless (eq scope :project) (list buf-file))
+            :names   (when test-name (list test-name))
+            :name    (or test-name (when buf-file (file-name-nondirectory buf-file)))))))
 
 ;;; Flutter Detection
-
-(defun verdict-dart--imported-packages ()
-  "Return list of package names imported in the current buffer, using tree-sitter."
-  (verdict-dart--ensure-parser)
-  (->> (treesit-query-capture
-        (treesit-buffer-root-node 'dart)
-        '((library_import (import_specification (configurable_uri (uri (string_literal) @uri))))))
-       (-map (lambda (capture)
-               (verdict-dart--string-content (treesit-node-text (cdr capture) t))))
-       (-filter (lambda (s) (string-prefix-p "package:" s)))
-       (-map (lambda (s) (car (split-string (string-remove-prefix "package:" s) "/"))))))
 
 (defun verdict-dart--flutter-project-p (project-dir)
   "Return non-nil if PROJECT-DIR's pubspec.yaml depends on Flutter.
@@ -330,19 +328,25 @@ package in `verdict-dart-flutter-packages'."
 
 (defun verdict-dart--use-flutter-p (context)
   "Return non-nil if CONTEXT indicates Flutter should be used.
-When a file is available, checks its imports against
-`verdict-dart-flutter-packages'.  Otherwise falls back to
-checking the project's pubspec.yaml."
-  (if (plist-get context :file)
-      (seq-intersection (verdict-dart--imported-packages)
-                        verdict-dart-flutter-packages)
-    (verdict-dart--flutter-project-p (plist-get context :project))))
+Checks the project's pubspec.yaml for Flutter dependencies."
+  (verdict-dart--flutter-project-p (plist-get context :project)))
+
+(defun verdict-dart--pcre-quote (string)
+  "Escape PCRE metacharacters in STRING."
+  (replace-regexp-in-string "[\\\\^$.|?*+()\\[\\]{}]" "\\\\\\&" string))
+
+(defun verdict-dart--name-filter-args (names)
+  "Return command-line args to filter by NAMES, or nil."
+  (when names
+    (if (= (length names) 1)
+        (list "--plain-name" (car names))
+      (list "--name" (concat "^(" (mapconcat #'verdict-dart--pcre-quote names "|") ")$")))))
 
 (defun verdict-dart--command-fn (context debug)
   "Build dart/flutter test command from CONTEXT and DEBUG flag.
 Returns a plist with :command :directory :name."
-  (let* ((file   (plist-get context :file))
-         (name   (plist-get context :test-name))
+  (let* ((files  (plist-get context :files))
+         (names  (plist-get context :names))
          (runner (if (verdict-dart--use-flutter-p context) "flutter" "dart")))
     (if debug
         (let ((debug-context (plist-put (copy-sequence context) :runner runner)))
@@ -350,8 +354,8 @@ Returns a plist with :command :directory :name."
                 :directory (plist-get context :project)
                 :name      (plist-get context :name)))
       (list :command   (append (list runner "test" "-r" "json")
-                               (when name (list "--plain-name" name))
-                               (when file (list file)))
+                               (verdict-dart--name-filter-args names)
+                               files)
             :directory (plist-get context :project)
             :name      (plist-get context :name)))))
 
@@ -368,10 +372,13 @@ Returns a plist with :command :directory :name."
 
 (defun verdict-dart--dape-debug (context)
   "Launch a dape debug session for a dart/flutter test.
-CONTEXT is a plist with :project, :file, :test-name, :name, :runner."
+CONTEXT is a plist with :project, :file, :names, :name, :runner."
   (let* ((runner    (plist-get context :runner))
-         (file      (plist-get context :file))
-         (test-name (plist-get context :test-name))
+         (files     (plist-get context :files))
+         (_         (when (> (length files) 1)
+                      (error "Debug mode supports only a single file")))
+         (file      (car files))
+         (names     (plist-get context :names))
          (flutter-p (string= runner "flutter"))
          (config    `(command ,runner
                       command-args ("debug_adapter" "--test")
@@ -379,8 +386,8 @@ CONTEXT is a plist with :project, :file, :test-name, :name, :runner."
                       :type "dart"
                       :cwd "."
                       ,@(when file (list :program file))
-                      ,@(when test-name
-                          (list :args (vector "--plain-name" test-name)))
+                      ,@(when names
+                          (list :args (vector "--plain-name" (car names))))
                       ,@(when flutter-p '(:toolArgs ["-d" "all"])))))
     (dape config)))
 
