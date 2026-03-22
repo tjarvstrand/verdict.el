@@ -9,9 +9,6 @@
 
 ;; TODO
 ;; - [Dart] Add links to stack traces in output
-;; - Fix keybindings and mouse actions
-;; - Output filter
-;; - Jump to next failure
 ;; - Add a module scope
 ;; - Stop link/keybinding
 
@@ -44,6 +41,10 @@
 (defface verdict-name-face
   '((t :inherit shadow))
   "Face for test name header in the output buffer.")
+
+(defface verdict-button-face
+  '((t :inherit button :underline nil))
+  "Face for clickable buttons in verdict buffers.")
 
 ;; Mode-line face variants
 
@@ -189,6 +190,8 @@ nil   — prompt before each run, then offer to remember the answer."
 (defvar verdict--run-state nil
   "Current run state: nil, `running', or `finished'.")
 
+(defvar verdict--hidden-statuses nil
+  "List of status symbols whose tests are currently hidden in the tree.")
 
 (defvar verdict-buffer-name "*verdict*"
   "Name of the verdict results buffer.")
@@ -324,32 +327,40 @@ See `verdict--backends' for the supported predicate forms."
 (defun verdict--build-tree (ids)
   "Build a nested tree of node plists from IDS by resolving children.
 Recursively resolves :children IDs, computes aggregate :status for groups,
-and injects a synthetic *output* child for any group with :output."
-  (mapcar
-   (lambda (id)
-     (let* ((node       (gethash id verdict--nodes))
-            (child-ids  (plist-get node :children))
-            (output     (plist-get node :output)))
-       (cond
-         (child-ids
-          (let* ((child-list (verdict--build-tree child-ids))
-                 (child-list (if output
-                                 (cons (verdict--output-node id (plist-get node :label) output) child-list)
-                               child-list))
-                 (agg-status (verdict--worst-status
-                              (mapcar (lambda (c) (plist-get c :status)) child-list)))
-                 (copy       (copy-sequence node)))
-            (plist-put copy :children child-list)
-            (plist-put copy :status agg-status)
-            copy))
-         ((and output (plist-member node :children))
-          ;; No real children but has output (e.g. compilation failure): inject output child,
-          ;; keep explicit status rather than aggregating.
-          (let ((copy (copy-sequence node)))
-            (plist-put copy :children (list (verdict--output-node id (plist-get node :label) output)))
-            copy))
-         (t node))))
-   ids))
+and injects a synthetic *output* child for any group with :output.
+Filters out nodes whose status is in `verdict--hidden-statuses'."
+  (delq nil
+   (mapcar
+    (lambda (id)
+      (let* ((node       (gethash id verdict--nodes))
+             (child-ids  (plist-get node :children))
+             (output     (plist-get node :output)))
+        (cond
+          (child-ids
+           (let* ((child-list (verdict--build-tree child-ids))
+                  (child-list (if output
+                                  (cons (verdict--output-node id (plist-get node :label) output) child-list)
+                                child-list))
+                  (child-list (seq-remove
+                               (lambda (c)
+                                 (and (not (plist-get c :children))
+                                      (memq (plist-get c :status) verdict--hidden-statuses)))
+                               child-list)))
+             (when child-list
+               (let* ((agg-status (verdict--worst-status
+                                   (mapcar (lambda (c) (plist-get c :status)) child-list)))
+                      (copy       (copy-sequence node)))
+                 (plist-put copy :children child-list)
+                 (plist-put copy :status agg-status)
+                 copy))))
+          ((and output (plist-member node :children))
+           (let ((copy (copy-sequence node)))
+             (plist-put copy :children (list (verdict--output-node id (plist-get node :label) output)))
+             copy))
+          ((memq (plist-get node :status) verdict--hidden-statuses)
+           nil)
+          (t node))))
+    ids)))
 
 ;;; Treemacs Node Types
 
@@ -459,7 +470,7 @@ PREV is the node's :output before this message; used to add a newline separator.
 (defun verdict--visit-link (file)
   "Return a propertized link icon string when FILE is non-nil."
   (when file
-    (propertize " ↗" 'face 'link
+    (propertize " ↗" 'face 'verdict-button-face
                      'keymap verdict--visit-link-keymap
                      'mouse-face 'highlight
                      'help-echo "Visit file")))
@@ -496,7 +507,7 @@ PREV is the node's :output before this message; used to add a newline separator.
 (defun verdict--rerun-link (item)
   "Return a propertized rerun link string, or nil for output nodes."
   (unless (plist-get item :source-id)
-    (propertize " ⟲" 'face 'link
+    (propertize " ⟲" 'face 'verdict-button-face
                       'keymap verdict--rerun-link-keymap
                       'mouse-face 'highlight
                       'help-echo "Rerun")))
@@ -526,6 +537,45 @@ PREV is the node's :output before this message; used to add a newline separator.
          (updated-parent (plist-put parent :children updated-children)))
     (puthash parent-id updated-parent verdict--nodes)))
 
+;;; Status Filter
+
+(defun verdict--toggle-status-filter (status)
+  "Toggle visibility of STATUS in the verdict tree and re-render."
+  (if (memq status verdict--hidden-statuses)
+      (setq verdict--hidden-statuses (delq status verdict--hidden-statuses))
+    (push status verdict--hidden-statuses))
+  (verdict--render))
+
+(defun verdict--render-filter-header ()
+  "Insert status filter buttons at the top of the verdict buffer."
+  (require 'cus-edit)
+  (let* ((counts (verdict--count-by-status))
+         (order '(passed failed error skipped stopped)))
+    (when counts
+      (insert "\nShow: ")
+      (dolist (status order)
+        (when-let* ((count (cdr (assq status counts))))
+          (let* ((hidden (memq status verdict--hidden-statuses))
+                 (check  (if hidden "☐ " "☑ "))
+                 (face   (if hidden 'shadow (verdict--status-face status)))
+                 (label  (format "%s (%d)" status count))
+                 (action (lambda (_btn) (verdict--toggle-status-filter status)))
+                 (help   (format "Toggle %s tests" status)))
+            (insert-text-button
+             check
+             'face 'verdict-button-face
+             'action action
+             'follow-link t
+             'help-echo help)
+            (insert-text-button
+             label
+             'face `(:inherit (,face verdict-button-face))
+             'action action
+             'follow-link t
+             'help-echo help)
+            (insert "  "))))
+      (insert "\n\n"))))
+
 ;;; Render
 
 (defun verdict--schedule-render ()
@@ -548,11 +598,16 @@ PREV is the node's :output before this message; used to add a newline separator.
         (let ((saved-point (point)))
           (treemacs-with-writable-buffer
            (erase-buffer)
-           (treemacs--render-extension (treemacs--ext-symbol-to-instance 'verdict-root) 99))
+           (treemacs--render-extension (treemacs--ext-symbol-to-instance 'verdict-root) 99)
+           (goto-char (point-min))
+           (verdict--render-filter-header))
           (goto-char (min saved-point (point-max)))
           (when (fboundp 'hl-line-highlight)
             (hl-line-highlight)))
       (treemacs-initialize verdict-root :with-expand-depth 99)
+      (treemacs-with-writable-buffer
+       (goto-char (point-min))
+       (verdict--render-filter-header))
       (setq-local mode-line-format verdict--mode-line-format)
       (local-set-key (kbd "M-RET") #'verdict--visit)
       (local-set-key (kbd "r") #'verdict--rerun-at-node)
@@ -652,7 +707,8 @@ PREV is the node's :output before this message; used to add a newline separator.
     (setq verdict--render-timer nil))
   (setq verdict-model nil)
   (setq verdict--output-node-id nil)
-  (setq verdict--run-state nil))
+  (setq verdict--run-state nil)
+  (setq verdict--hidden-statuses nil))
 
 
 (defun verdict--maybe-save-buffer ()
@@ -870,6 +926,7 @@ DEBUG is passed to the backend's command function."
     (define-key map (kbd "C-c t F") #'verdict-debug-file)
     (define-key map (kbd "C-c t P") #'verdict-debug-project)
     (define-key map (kbd "C-c t R") #'verdict-debug-last)
+    (define-key map (kbd "C-c t !") #'verdict-rerun-failed)
     map))
 
 (define-minor-mode verdict-mode
