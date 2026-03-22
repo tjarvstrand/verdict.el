@@ -10,7 +10,6 @@
 ;; TODO
 ;; - [Dart] Add links to stack traces in output
 ;; - Add a module scope
-;; - Stop link/keybinding
 
 ;;; Faces
 
@@ -611,7 +610,8 @@ PREV is the node's :output before this message; used to add a newline separator.
       (setq-local mode-line-format verdict--mode-line-format)
       (local-set-key (kbd "M-RET") #'verdict--visit)
       (local-set-key (kbd "r") #'verdict--rerun-at-node)
-      (local-set-key (kbd "f") #'verdict-rerun-failed))
+      (local-set-key (kbd "!") #'verdict-rerun-failed)
+      (local-set-key (kbd "k") #'verdict-kill))
     (current-buffer)))
 
 ;;; Public API
@@ -665,7 +665,15 @@ PREV is the node's :output before this message; used to add a newline separator.
             (face (if verdict-icon-font
                       `(:inherit ,base :family ,verdict-icon-font)
                     base)))
-       (concat " *verdict* " (propertize spinner 'face face) " Running…")))
+       (concat " *verdict* " (propertize spinner 'face face) " Running… "
+               (propertize "■ Stop"
+                           'face (verdict--mode-line-face 'verdict-error-face)
+                           'mouse-face 'highlight
+                           'help-echo "Kill running tests"
+                           'local-map (let ((map (make-sparse-keymap)))
+                                        (define-key map [mode-line mouse-1]
+                                          (lambda (e) (interactive "e") (verdict-kill)))
+                                        map)))))
     ('finished
      (let* ((counts (verdict--count-by-status))
             (passed  (or (cdr (assq 'passed counts)) 0))
@@ -867,6 +875,13 @@ DEBUG is passed to the backend's command function."
     (setq verdict--last-context context)
     (verdict--launch backend context debug)))
 
+(defun verdict-kill ()
+  "Kill the running test process."
+  (interactive)
+  (if (process-live-p verdict--proc)
+      (kill-process verdict--proc)
+    (user-error "No running verdict process")))
+
 ;;; Public Run Commands
 
 (defun verdict-run-at-point ()   (interactive) (verdict--run :at-point nil))
@@ -927,6 +942,7 @@ DEBUG is passed to the backend's command function."
     (define-key map (kbd "C-c t P") #'verdict-debug-project)
     (define-key map (kbd "C-c t R") #'verdict-debug-last)
     (define-key map (kbd "C-c t !") #'verdict-rerun-failed)
+    (define-key map (kbd "C-c t k") #'verdict-kill)
     map))
 
 (define-minor-mode verdict-mode
