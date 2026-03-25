@@ -40,6 +40,10 @@ used instead of `dart test'.")
 (defvar verdict-dart--loading-tests (make-hash-table :test #'equal)
   "Map of loading-test ID → suite ID.")
 
+(defvar verdict-dart--package-config nil
+  "Cached alist of (PACKAGE-NAME . LIB-DIR) for the current run.")
+
+
 ;;; Dart String Literal Parsing
 
 (defconst verdict-dart--string-prefixes
@@ -170,6 +174,99 @@ Skips root groups (those with empty names)."
   ;; Returns nil if url is nil
   (string-remove-prefix "file://" url))
 
+;;; Stack Trace Linkification
+
+(defun verdict-dart--load-package-config (project-dir)
+  "Load package_config.json from PROJECT-DIR or an ancestor.
+Caches the result in `verdict-dart--package-config'."
+  (let* ((dir (f-traverse-upwards
+               (lambda (d) (f-exists-p (f-join d ".dart_tool" "package_config.json")))
+               project-dir))
+         (config-file (when dir (f-join dir ".dart_tool" "package_config.json"))))
+    (setq verdict-dart--package-config
+          (when config-file
+            (let* ((json (json-parse-string
+                    (with-temp-buffer
+                      (insert-file-contents config-file)
+                      (buffer-string))
+                    :object-type 'plist))
+             (packages (plist-get json :packages))
+             (dart-tool-dir (f-join dir ".dart_tool"))
+             (result nil))
+              (seq-doseq (pkg packages)
+                (let* ((name     (plist-get pkg :name))
+                       (root-uri (plist-get pkg :rootUri))
+                       (pkg-uri  (or (plist-get pkg :packageUri) "lib/"))
+                       (abs-root (if (string-prefix-p "file://" root-uri)
+                                     (string-remove-prefix "file://" root-uri)
+                             (expand-file-name root-uri dart-tool-dir)))
+                       (lib-dir  (expand-file-name pkg-uri abs-root)))
+                  (push (cons name lib-dir) result)))
+              result)))))
+
+(defun verdict-dart--find-sdk-root ()
+  "Return the Dart SDK root directory, or nil."
+  (when-let* ((dart (executable-find "dart"))
+              (real (file-truename dart))
+              (sdk  (expand-file-name "../.." real)))
+    (when (file-directory-p (expand-file-name "lib/core" sdk))
+      (file-name-as-directory sdk))))
+
+(defun verdict-dart--resolve-stack-path (path anchor-dir)
+  "Resolve a dart stack trace PATH to an absolute file path, or nil.
+ANCHOR-DIR is used to locate the nearest pubspec.yaml for resolving
+relative paths and package: URIs."
+  (let ((project-dir (f-traverse-upwards
+                      (lambda (d) (f-exists-p (f-join d "pubspec.yaml")))
+                      anchor-dir)))
+    (cond
+     ((string-prefix-p "package:" path)
+      (when project-dir
+        (unless verdict-dart--package-config
+          (verdict-dart--load-package-config project-dir))
+        (let* ((rest     (string-remove-prefix "package:" path))
+               (slash    (string-search "/" rest))
+               (pkg-name (substring rest 0 slash))
+               (rel-path (substring rest (1+ slash)))
+               (lib-dir  (cdr (assoc pkg-name verdict-dart--package-config))))
+          (when lib-dir
+            (expand-file-name rel-path lib-dir)))))
+     ((string-prefix-p "org-dartlang-sdk:///" path)
+      (when-let* ((sdk (verdict-dart--find-sdk-root)))
+        (expand-file-name (string-remove-prefix "org-dartlang-sdk:///" path) sdk)))
+     ((string-prefix-p "dart:" path) nil)
+     (project-dir
+      (expand-file-name path project-dir)))))
+
+(defun verdict-dart--linkify (message anchor-file)
+  "Return MESSAGE with clickable link properties on stack trace references.
+ANCHOR-FILE is used to locate the project root for path resolution."
+  (let ((msg (copy-sequence message))
+        (pos 0))
+    (while (string-match
+            "^\\(package:[^ \n]+\\|org-dartlang-sdk:[^ \n]+\\|[^ \n]+\\.dart\\) \\([0-9]+\\):[0-9]+"
+            msg pos)
+      (let* ((path (match-string 1 msg))
+             (line (string-to-number (match-string 2 msg)))
+             (beg  (match-beginning 0))
+             (mend (match-end 0))
+             (action (let ((p path) (ln line) (dir (f-dirname anchor-file)))
+                       (lambda (_btn)
+                         (if-let ((abs (verdict-dart--resolve-stack-path p dir)))
+                             (progn (find-file-other-window abs)
+                                    (goto-char (point-min))
+                                    (forward-line (1- ln)))
+                           (message "Cannot resolve %s" p))))))
+        (add-text-properties
+         beg mend
+         (list 'button '(t) 'category 'default-button
+               'action action 'follow-link t
+               'face 'link 'mouse-face 'highlight
+               'help-echo (format "%s:%d" path line))
+         msg)
+        (setq pos mend)))
+    msg))
+
 ;;; JSON → Event Translation
 
 (defun verdict-dart--handle-event (event)
@@ -236,16 +333,22 @@ EVENT uses keyword keys, vectors for arrays, and :json-false for false."
                                 :file      (verdict-dart--url-to-file (plist-get test :url))))))))
 
     ("print"
-     (verdict-event (list :type     :log
-                          :severity 'info
-                          :id       (verdict-dart--resolve-test-id (plist-get event :testID))
-                          :message  (plist-get event :message))))
+     (let* ((id   (verdict-dart--resolve-test-id (plist-get event :testID)))
+            (file (plist-get (gethash id verdict--nodes) :file)))
+       (verdict-event (list :type     :log
+                            :severity 'info
+                            :id       id
+                            :message  (verdict-dart--linkify (plist-get event :message) file)))))
 
     ("error"
-     (verdict-event (list :type     :log
-                          :severity 'error
-                          :id       (verdict-dart--resolve-test-id (plist-get event :testID))
-                          :message  (concat (plist-get event :error) "\n" (plist-get event :stackTrace)))))
+     (let* ((id   (verdict-dart--resolve-test-id (plist-get event :testID)))
+            (file (plist-get (gethash id verdict--nodes) :file)))
+       (verdict-event (list :type     :log
+                            :severity 'error
+                            :id       id
+                            :message  (verdict-dart--linkify
+                                       (concat (plist-get event :error) "\n" (plist-get event :stackTrace))
+                                       file)))))
 
     ("testDone"
      (let* ((raw-id  (plist-get event :testID))
@@ -287,7 +390,8 @@ use it instead of deriving from the buffer.
 Resets per-run parse state as a side effect."
   (setq verdict-dart--group-names    (make-hash-table)
         verdict-dart--file-suite-ids (make-hash-table :test #'equal)
-        verdict-dart--loading-tests  (make-hash-table :test #'equal))
+        verdict-dart--loading-tests  (make-hash-table :test #'equal)
+        verdict-dart--package-config nil)
   (if file-tests
       (let ((files (mapcar #'car file-tests))
             (names (mapcan #'cdr (mapcar #'copy-sequence file-tests))))

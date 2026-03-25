@@ -7,8 +7,11 @@
 (require 'dash)
 (require 's)
 
-;; TODO
-;; - [Dart] Add links to stack traces in output
+;; TODO:
+;; - Add header to main buffer with command that was run
+;; - Fix output not being reset
+;; - Only show init if it failed or if group is non-empty after filtering
+;; - Keybinding to rerun all from main buffer
 
 ;;; Faces
 
@@ -317,10 +320,10 @@ See `verdict--backends' for the supported predicate forms."
      (propertize " "  'face `(:inherit ,face)))))
 
 (defun verdict--render-message (severity message)
-  "Return propertized group icon string for ICON-CHAR."
-  (if (eq severity 'error)
-      (propertize message 'face 'verdict-error-face)
-    message))
+  "Return MESSAGE, optionally with error face applied."
+  (when (eq severity 'error)
+    (add-face-text-property 0 (length message) 'verdict-error-face nil message))
+  message)
 
 ;;; Build Display Tree
 
