@@ -9,7 +9,6 @@
 
 ;; TODO:
 ;; - Fix output not being reset
-;; - Only show init if it failed or if group is non-empty after filtering
 ;; - Keybinding to rerun all from main buffer
 
 ;;; Faces
@@ -353,14 +352,15 @@ Filters out nodes whose status is in `verdict--hidden-statuses'."
         (cond
           (child-ids
            (let* ((child-list (verdict--build-tree child-ids))
-                  (child-list (if output
-                                  (cons (verdict--output-node id (plist-get node :label) output) child-list)
-                                child-list))
                   (child-list (seq-remove
                                (lambda (c)
                                  (and (not (plist-get c :children))
                                       (memq (plist-get c :status) verdict--hidden-statuses)))
-                               child-list)))
+                               child-list))
+                  (init-failed (memq (plist-get node :status) '(error failed)))
+                  (child-list (if (and output (or init-failed child-list))
+                                  (cons (verdict--output-node id (plist-get node :label) output) child-list)
+                                child-list)))
              (when child-list
                (let* ((agg-status (verdict--worst-status
                                    (mapcar (lambda (c) (plist-get c :status)) child-list)))
@@ -368,7 +368,8 @@ Filters out nodes whose status is in `verdict--hidden-statuses'."
                  (plist-put copy :children child-list)
                  (plist-put copy :status agg-status)
                  copy))))
-          ((and output (plist-member node :children))
+          ((and output (plist-member node :children)
+                (memq (plist-get node :status) '(error failed)))
            (let ((copy (copy-sequence node)))
              (plist-put copy :children (list (verdict--output-node id (plist-get node :label) output)))
              copy))
