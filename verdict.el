@@ -8,7 +8,6 @@
 (require 's)
 
 ;; TODO:
-;; - Add header to main buffer with command that was run
 ;; - Fix output not being reset
 ;; - Only show init if it failed or if group is non-empty after filtering
 ;; - Keybinding to rerun all from main buffer
@@ -224,9 +223,10 @@ BACKEND-PLIST keys:
                   called in source buffer.  When FILE-TESTS is provided (an alist
                   of (FILE . (NAME ...)) entries), use it instead of deriving
                   from the buffer.
-  :command-fn   — function (context debug) → plist with :command :directory :name.
+  :command-fn   — function (context debug) → plist with :command :directory :name :header.
                   :command may be a list (verdict manages the process) or a function
                   (custom launch; fn must call `verdict-stop' when done)
+                  :header is an optional string displayed at the top of the verdict buffer
   :line-handler — function (line) called per complete output line")
 
 (defun verdict--match-predicate (predicate)
@@ -263,6 +263,9 @@ See `verdict--backends' for the supported predicate forms."
 
 (defvar verdict--proc-backend nil
   "Backend plist for the currently running (or last completed) process.")
+
+(defvar verdict--run-header nil
+  "Header string displayed at the top of the verdict buffer.")
 
 (defvar verdict--last-backend nil
   "Backend plist from the last run, for rerun.")
@@ -558,6 +561,14 @@ PREV is the node's :output before this message; used to add a newline separator.
     (push status verdict--hidden-statuses))
   (verdict--render))
 
+(defun verdict--render-command-header ()
+  "Insert the run header at the top of the verdict buffer."
+  (when verdict--run-header
+    (let ((sep (propertize (make-string 40 ?─) 'face 'shadow)))
+      (insert sep "\n")
+      (insert (propertize verdict--run-header 'face 'shadow) "\n")
+      (insert sep "\n"))))
+
 (defun verdict--render-filter-header ()
   "Insert status filter buttons at the top of the verdict buffer."
   (require 'cus-edit)
@@ -614,6 +625,7 @@ PREV is the node's :output before this message; used to add a newline separator.
            (erase-buffer)
            (treemacs--render-extension (treemacs--ext-symbol-to-instance 'verdict-root) 99)
            (goto-char (point-min))
+           (verdict--render-command-header)
            (verdict--render-filter-header))
           (goto-char (min saved-point (point-max)))
           (dolist (entry saved-windows)
@@ -625,6 +637,7 @@ PREV is the node's :output before this message; used to add a newline separator.
       (treemacs-initialize verdict-root :with-expand-depth 99)
       (treemacs-with-writable-buffer
        (goto-char (point-min))
+       (verdict--render-command-header)
        (verdict--render-filter-header))
       (setq-local mode-line-format verdict--mode-line-format)
       (local-set-key (kbd "M-RET") #'verdict--visit)
@@ -735,7 +748,8 @@ PREV is the node's :output before this message; used to add a newline separator.
   (setq verdict-model nil)
   (setq verdict--output-node-id nil)
   (setq verdict--run-state nil)
-  (setq verdict--hidden-statuses nil))
+  (setq verdict--hidden-statuses nil)
+)
 
 
 (defun verdict--maybe-save-buffer ()
@@ -871,6 +885,7 @@ EVENT must have a :type field with a keyword value."
          (dir  (or (plist-get spec :directory) default-directory))
          (name (plist-get spec :name))
          (default-directory dir))
+    (setq verdict--run-header (plist-get spec :header))
     (verdict-start nil name)
     (if (functionp cmd)
         (funcall cmd)

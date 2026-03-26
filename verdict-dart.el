@@ -450,20 +450,24 @@ Checks the project's pubspec.yaml for Flutter dependencies."
 
 (defun verdict-dart--command-fn (context debug)
   "Build dart/flutter test command from CONTEXT and DEBUG flag.
-Returns a plist with :command :directory :name."
+Returns a plist with :command :directory :name :header."
   (let* ((files  (plist-get context :files))
          (names  (plist-get context :names))
+         (dir    (plist-get context :project))
          (runner (if (verdict-dart--use-flutter-p context) "flutter" "dart")))
     (if debug
         (let ((debug-context (plist-put (copy-sequence context) :runner runner)))
           (list :command   (lambda () (funcall verdict-dart-debug-fn debug-context))
-                :directory (plist-get context :project)
-                :name      (plist-get context :name)))
-      (list :command   (append (list runner "test" "-r" "json")
-                               (verdict-dart--name-filter-args names)
-                               files)
-            :directory (plist-get context :project)
-            :name      (plist-get context :name)))))
+                :directory dir
+                :name      (plist-get context :name)
+                :header    (concat "debug in " dir)))
+      (let ((cmd (append (list runner "test" "-r" "json")
+                         (verdict-dart--name-filter-args names)
+                         files)))
+        (list :command   cmd
+              :directory dir
+              :name      (plist-get context :name)
+              :header    (concat "$ " (string-join cmd " ") "\n  in " dir))))))
 
 ;;; Backend Registration
 
