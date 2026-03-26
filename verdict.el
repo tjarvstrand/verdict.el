@@ -643,6 +643,7 @@ PREV is the node's :output before this message; used to add a newline separator.
       (setq-local mode-line-format verdict--mode-line-format)
       (local-set-key (kbd "M-RET") #'verdict--visit)
       (local-set-key (kbd "r") #'verdict--rerun-at-node)
+      (local-set-key (kbd "R") #'verdict-run-last)
       (local-set-key (kbd "!") #'verdict-rerun-failed)
       (local-set-key (kbd "k") #'verdict-kill))
     (current-buffer)))

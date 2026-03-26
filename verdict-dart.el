@@ -240,9 +240,12 @@ relative paths and package: URIs."
 
 (defun verdict-dart--linkify (message anchor-file)
   "Return MESSAGE with clickable link properties on stack trace references.
-ANCHOR-FILE is used to locate the project root for path resolution."
-  (let ((msg (copy-sequence message))
-        (pos 0))
+ANCHOR-FILE is used to locate the project root for path resolution.
+Returns MESSAGE unchanged if ANCHOR-FILE is nil."
+  (if (null anchor-file)
+      message
+    (let ((msg (copy-sequence message))
+          (pos 0))
     (while (string-match
             "^\\(package:[^ \n]+\\|org-dartlang-sdk:[^ \n]+\\|[^ \n]+\\.dart\\) \\([0-9]+\\):[0-9]+"
             msg pos)
@@ -265,7 +268,7 @@ ANCHOR-FILE is used to locate the project root for path resolution."
                'help-echo (format "%s:%d" path line))
          msg)
         (setq pos mend)))
-    msg))
+      msg)))
 
 ;;; JSON → Event Translation
 
@@ -393,8 +396,9 @@ Resets per-run parse state as a side effect."
         verdict-dart--loading-tests  (make-hash-table :test #'equal)
         verdict-dart--package-config nil)
   (if file-tests
-      (let ((files (mapcar #'car file-tests))
-            (names (mapcan #'cdr (mapcar #'copy-sequence file-tests))))
+      (let* ((files (mapcar #'car file-tests))
+             (names (mapcan #'cdr (mapcar #'copy-sequence file-tests)))
+             (buffer-file-name (or buffer-file-name (car files))))
         (list :project (verdict-dart--module-root)
               :files   files
               :names   names
