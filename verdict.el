@@ -7,10 +7,6 @@
 (require 'dash)
 (require 's)
 
-;; TODO:
-;; - Fix output not being reset
-;; - Keybinding to rerun all from main buffer
-
 ;;; Faces
 
 (defface verdict-success-face
@@ -455,7 +451,8 @@ PREV is the node's :output before this message; used to add a newline separator.
     (setq verdict--output-node-id id)
     (with-current-buffer (get-buffer-create "*verdict-output*")
       (verdict--write-output-buffer label output)
-      (display-buffer (current-buffer) '(display-buffer-below-selected)))))
+      (when-let ((win (display-buffer (current-buffer) '(display-buffer-below-selected))))
+        (set-window-parameter win 'verdict-managed t)))))
 
 (defun verdict--visit (&optional _arg)
   "Navigate to test file/line for node at point."
@@ -739,8 +736,17 @@ PREV is the node's :output before this message; used to add a newline separator.
     (with-current-buffer buf
       (force-mode-line-update))))
 
+(defun verdict--kill-output-buffer ()
+  "Kill the *verdict-output* buffer and its verdict-managed window, if any."
+  (when-let ((buf (get-buffer "*verdict-output*")))
+    (dolist (win (get-buffer-window-list buf nil t))
+      (when (window-parameter win 'verdict-managed)
+        (delete-window win)))
+    (kill-buffer buf)))
+
 (defun verdict-reset ()
   "Clear all internal verdict state. Does not render."
+  (verdict--kill-output-buffer)
   (verdict--spinner-stop)
   (clrhash verdict--nodes)
   (setq verdict--root-ids nil)
