@@ -408,9 +408,11 @@ Resets per-run parse state as a side effect."
                         (:at-point (plist-get (or (verdict-dart--test-at-point)
                                                   (error "No test found at point"))
                                               :name))
-                        (:group    (plist-get (car (or (verdict-dart--enclosing-calls)
+                        (:group    (let* ((calls (or (verdict-dart--enclosing-calls)
                                                        (error "No group or test found at point")))
-                                              :name))
+                                           (groups (seq-filter (lambda (c) (string= (plist-get c :kind) "group")) calls)))
+                                    (unless groups (error "No group found at point"))
+                                    (mapconcat (lambda (c) (plist-get c :name)) groups " ")))
                         (_ nil))))
       (list :project (pcase scope
                        (:project (funcall verdict-project-root-fn))
