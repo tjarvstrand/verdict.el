@@ -1,11 +1,43 @@
 ;;; verdict-dart.el --- Dart runner for verdict -*- lexical-binding: t -*-
-;;
-;; Package-Requires: ((emacs "30.0") (verdict "0.1") (f "0.20"))
+
+;; Author: Thomas Järvstrand
+;; Maintainer: Thomas Järvstrand
+;; Version: 0.1.0
+;; URL: https://github.com/tjarvstrand/verdict.el
+;; Keywords: tools, languages
+;; Package-Requires: ((emacs "29.1") (verdict "0.1") (dash "2.0") (f "0.20") (yaml "0.5"))
+;; SPDX-License-Identifier: GPL-3.0-or-later
+
+;; This program is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+;;; Commentary:
+
+;; Dart and Flutter test backend for verdict.  Provides test discovery
+;; via tree-sitter, JSON protocol parsing, and optional debug support
+;; (by default using dape).
+
+;;; Code:
 
 (require 'verdict)
 (require 'treesit)
 (require 'f)
 (require 'yaml)
+
+(defgroup verdict-dart nil
+  "Dart backend for verdict."
+  :group 'verdict
+  :prefix "verdict-dart-")
 
 ;;; Customization
 
@@ -22,7 +54,8 @@ Called with a single argument: a plist with keys
 :project, :files, :names, :name, :runner (\"dart\" or \"flutter\").
 The function should start a debug session (e.g. via dape or dap-mode).
 The default uses dape if available, otherwise signals an error."
-  :type 'function)
+  :type 'function
+  :group 'verdict-dart)
 
 (defvar verdict-dart-flutter-packages '("flutter_test")
   "List of package names whose import indicates a Flutter test file.
@@ -171,8 +204,8 @@ Skips root groups (those with empty names)."
 
 (defun verdict-dart--url-to-file (url)
   "Convert a file:// URL to a local file path, or return nil."
-  ;; Returns nil if url is nil
-  (string-remove-prefix "file://" url))
+  (when url
+    (string-remove-prefix "file://" url)))
 
 ;;; Stack Trace Linkification
 
@@ -405,10 +438,10 @@ Resets per-run parse state as a side effect."
               :name    (car (or names files))))
     (let* ((buf-file  (buffer-file-name))
            (test-name (pcase scope
-                        (:at-point (plist-get (or (verdict-dart--test-at-point)
-                                                  (error "No test found at point"))
-                                              :name))
-                        (:group    (let* ((calls (or (verdict-dart--enclosing-calls)
+                        (:test-at-point (plist-get (or (verdict-dart--test-at-point)
+                                                      (error "No test found at point"))
+                                                  :name))
+                        (:group-at-point (let* ((calls (or (verdict-dart--enclosing-calls)
                                                        (error "No group or test found at point")))
                                            (groups (seq-filter (lambda (c) (string= (plist-get c :kind) "group")) calls)))
                                     (unless groups (error "No group found at point"))
@@ -477,12 +510,17 @@ Returns a plist with :command :directory :name :header."
 
 ;;; Backend Registration
 
-(verdict-register-backend 'dart-ts-mode
-                         #'verdict-dart--context-fn
-                         #'verdict-dart--command-fn
-                         #'verdict-dart--handle-line)
+;;;###autoload
+(defun verdict-dart-setup ()
+  "Register the Dart backend for the current buffer's major mode.
+Call this from a mode hook, e.g.:
 
-(add-hook 'dart-ts-mode-hook #'verdict-mode)
+  (add-hook \\='dart-ts-mode-hook #\\='verdict-dart-setup)"
+  (verdict-register-backend major-mode
+                            #'verdict-dart--context-fn
+                            #'verdict-dart--command-fn
+                            #'verdict-dart--handle-line)
+  (verdict-mode 1))
 
 ;;; Dape Integration
 

@@ -9,8 +9,8 @@ run = """
 emacs -batch \
   --eval '(setq package-user-dir (expand-file-name ".packages" default-directory))' \
   --eval '(package-initialize)' \
-  -L . \
-  -L test \
+  -L packages/verdict \
+  -L packages/verdict/test \
   -l buttercup \
   -l verdict-test \
   -f buttercup-run
@@ -23,8 +23,9 @@ run = """
 emacs -batch \
   --eval '(setq package-user-dir (expand-file-name ".packages" default-directory))' \
   --eval '(package-initialize)' \
-  -L . \
-  -L test \
+  -L packages/verdict \
+  -L packages/verdict-dart \
+  -L packages/verdict-dart/test \
   -l buttercup \
   -l verdict-dart-test \
   -f buttercup-run
@@ -38,5 +39,36 @@ emacs -batch \
   --eval '(package-initialize)' \
   --eval '(add-to-list (quote package-archives) (cons "melpa" "https://melpa.org/packages/") t)' \
   --eval '(package-refresh-contents)' \
-  --eval '(dolist (pkg (quote (buttercup treemacs dash s f yaml))) (unless (package-installed-p pkg) (package-install pkg)))'
+  --eval '(dolist (pkg (quote (buttercup treemacs dash s f yaml package-lint))) (unless (package-installed-p pkg) (package-install pkg)))'
 """
+
+[tasks.compile]
+description = "Byte-compile all package files"
+depends = ["deps"]
+run = """
+emacs -batch \
+  --eval '(setq package-user-dir (expand-file-name ".packages" default-directory))' \
+  --eval '(package-initialize)' \
+  -L packages/verdict \
+  -L packages/verdict-dart \
+  --eval '(setq byte-compile-error-on-warn t)' \
+  -f batch-byte-compile \
+  packages/verdict/verdict.el packages/verdict-dart/verdict-dart.el
+"""
+
+[tasks.lint]
+description = "Run package-lint on all package files"
+depends = ["deps"]
+run = """
+emacs -batch \
+  --eval '(setq package-user-dir (expand-file-name ".packages" default-directory))' \
+  --eval '(package-initialize)' \
+  --eval '(require (quote package-lint))' \
+  --eval '(setq package-lint-main-file "packages/verdict/verdict.el")' \
+  -f package-lint-batch-and-exit \
+  packages/verdict/verdict.el packages/verdict-dart/verdict-dart.el
+"""
+
+[tasks.ci]
+description = "Run all CI checks (compile, lint, test)"
+depends = ["compile", "lint", "test"]

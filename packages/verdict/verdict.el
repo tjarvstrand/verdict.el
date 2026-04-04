@@ -1,11 +1,46 @@
 ;;; verdict.el --- Generic test runner with treemacs results UI -*- lexical-binding: t -*-
-;;
-;; Package-Requires: ((emacs "30.0") (treemacs "2.0") (dash "2.0") (s "1.0"))
+
+;; Author: Thomas Järvstrand
+;; Maintainer: Thomas Järvstrand
+;; Version: 0.1.0
+;; URL: https://github.com/tjarvstrand/verdict.el
+;; Keywords: tools, processes
+;; Package-Requires: ((emacs "29.1") (treemacs "3.0") (dash "2.0") (s "1.0"))
+;; SPDX-License-Identifier: GPL-3.0-or-later
+
+;; This program is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+;;; Commentary:
+
+;; Verdict is a generic test runner framework for Emacs that displays
+;; results in a treemacs-based UI.  It provides a backend API for
+;; language-specific test runners to plug into.  See the README for
+;; details on writing a backend.
+
+;;; Code:
 
 (require 'treemacs-treelib)
 (require 'ansi-color)
 (require 'dash)
 (require 's)
+
+;;; Customization
+
+(defgroup verdict nil
+  "Generic test runner with treemacs results UI."
+  :group 'tools
+  :prefix "verdict-")
 
 ;;; Faces
 
@@ -240,6 +275,7 @@ BACKEND-PLIST keys:
       (error "No verdict backend matches buffer %s (mode: %s)"
              (buffer-name) major-mode)))
 
+;;;###autoload
 (defun verdict-register-backend (predicate context-fn command-fn line-handler)
   "Register a backend with PREDICATE, CONTEXT-FN, COMMAND-FN, and LINE-HANDLER.
 See `verdict--backends' for the supported predicate forms."
@@ -387,8 +423,8 @@ Filters out nodes whose status is in `verdict--hidden-statuses'."
   :key         (plist-get item :id)
   :children    (plist-get item :children)
   :child-type  'verdict-node
-  :ret-action           #'verdict--toggle-or-show-output
-  :double-click-action  #'verdict--toggle-or-show-output)
+  :ret-action           #'verdict--visit
+  :double-click-action  #'verdict--visit)
 
 (treemacs-define-variadic-entry-node-type verdict-root
   :key        "verdict-root"
@@ -540,6 +576,18 @@ PREV is the node's :output before this message; used to add a newline separator.
         (treemacs-TAB-action)
       (verdict--show-output))))
 
+(defun verdict--single-click-action (event)
+  "Handle single click: move point, then toggle/show output.
+Must be bound to a mouse click, or EVENT will not be supplied."
+  (interactive "e")
+  (when (eq 'mouse-1 (elt event 0))
+    (select-window (->> event (cadr) (nth 0)))
+    (goto-char (posn-point (cadr event)))
+    (when (region-active-p)
+      (keyboard-quit))
+    (verdict--toggle-or-show-output)
+    (treemacs--evade-image)))
+
 
 ;;; Node Helpers
 
@@ -638,11 +686,16 @@ PREV is the node's :output before this message; used to add a newline separator.
        (verdict--render-command-header)
        (verdict--render-filter-header))
       (setq-local mode-line-format verdict--mode-line-format)
-      (local-set-key (kbd "M-RET") #'verdict--visit)
-      (local-set-key (kbd "r") #'verdict--rerun-at-node)
-      (local-set-key (kbd "R") #'verdict-run-last)
-      (local-set-key (kbd "!") #'verdict-rerun-failed)
-      (local-set-key (kbd "k") #'verdict-kill))
+      (let ((map (make-sparse-keymap)))
+        (set-keymap-parent map (current-local-map))
+        (define-key map [tab]      #'verdict--toggle-or-show-output)
+        (define-key map [?\t]      #'verdict--toggle-or-show-output)
+        (define-key map [mouse-1]  #'verdict--single-click-action)
+        (define-key map (kbd "r")  #'verdict--rerun-at-node)
+        (define-key map (kbd "R")  #'verdict-run-last)
+        (define-key map (kbd "!")  #'verdict-rerun-failed)
+        (define-key map (kbd "k")  #'verdict-kill)
+        (use-local-map map)))
     (current-buffer)))
 
 ;;; Public API
@@ -671,7 +724,10 @@ PREV is the node's :output before this message; used to add a newline separator.
 
 (defun verdict--mode-line-face (face)
   "Return the mode-line variant of FACE for the current window."
-  (let ((suffix (if (mode-line-window-selected-p) "-mode-line-active-face" "-mode-line-face")))
+  (let ((suffix (if (if (fboundp 'mode-line-window-selected-p)
+            (mode-line-window-selected-p)
+          (eq (selected-window) (frame-selected-window)))
+        "-mode-line-active-face" "-mode-line-face")))
     (intern (concat (string-remove-suffix "-face" (symbol-name face)) suffix))))
 
 (defun verdict--count-by-status ()
@@ -781,7 +837,7 @@ PREV is the node's :output before this message; used to add a newline separator.
 
 (defun verdict-start (type name)
   "Reset state and display the (empty) verdict buffer.
-TYPE is one of :project :file :group :test. NAME is a string or nil."
+TYPE is one of :project :module :file :group-at-point :test-at-point. NAME is a string or nil."
   (verdict--maybe-save-buffer)
   (verdict-reset)
   (setq verdict--run-state 'running)
@@ -917,6 +973,7 @@ DEBUG is passed to the backend's command function."
     (setq verdict--last-context context)
     (verdict--launch backend context debug)))
 
+;;;###autoload
 (defun verdict-kill ()
   "Kill the running test process."
   (interactive)
@@ -926,29 +983,42 @@ DEBUG is passed to the backend's command function."
 
 ;;; Public Run Commands
 
-(defun verdict-run-at-point ()   (interactive) (verdict--run :at-point nil))
-(defun verdict-run-group ()      (interactive) (verdict--run :group nil))
+;;;###autoload
+(defun verdict-run-test-at-point ()   (interactive) (verdict--run :test-at-point nil))
+;;;###autoload
+(defun verdict-run-group-at-point ()      (interactive) (verdict--run :group-at-point nil))
+;;;###autoload
 (defun verdict-run-file ()       (interactive) (verdict--run :file nil))
+;;;###autoload
 (defun verdict-run-module ()     (interactive) (verdict--run :module nil))
+;;;###autoload
 (defun verdict-run-project ()    (interactive) (verdict--run :project nil))
-(defun verdict-debug-at-point () (interactive) (verdict--run :at-point t))
-(defun verdict-debug-group ()    (interactive) (verdict--run :group t))
+;;;###autoload
+(defun verdict-debug-test-at-point () (interactive) (verdict--run :test-at-point t))
+;;;###autoload
+(defun verdict-debug-group-at-point ()    (interactive) (verdict--run :group-at-point t))
+;;;###autoload
 (defun verdict-debug-file ()     (interactive) (verdict--run :file t))
+;;;###autoload
 (defun verdict-debug-module ()   (interactive) (verdict--run :module t))
+;;;###autoload
 (defun verdict-debug-project ()  (interactive) (verdict--run :project t))
 
+;;;###autoload
 (defun verdict-run-last ()
   "Rerun the last test run."
   (interactive)
   (unless verdict--last-context (error "No previous verdict run to repeat"))
   (verdict--launch verdict--last-backend verdict--last-context nil))
 
+;;;###autoload
 (defun verdict-debug-last ()
   "Rerun the last test run with debugging."
   (interactive)
   (unless verdict--last-context (error "No previous verdict run to repeat"))
   (verdict--launch verdict--last-backend verdict--last-context t))
 
+;;;###autoload
 (defun verdict-rerun-failed ()
   "Rerun only the failed tests from the last run."
   (interactive)
@@ -975,14 +1045,14 @@ DEBUG is passed to the backend's command function."
 
 (defvar verdict-mode-map
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "C-c t t") #'verdict-run-at-point)
-    (define-key map (kbd "C-c t g") #'verdict-run-group)
+    (define-key map (kbd "C-c t t") #'verdict-run-test-at-point)
+    (define-key map (kbd "C-c t g") #'verdict-run-group-at-point)
     (define-key map (kbd "C-c t f") #'verdict-run-file)
     (define-key map (kbd "C-c t m") #'verdict-run-module)
     (define-key map (kbd "C-c t p") #'verdict-run-project)
     (define-key map (kbd "C-c t r") #'verdict-run-last)
-    (define-key map (kbd "C-c t T") #'verdict-debug-at-point)
-    (define-key map (kbd "C-c t G") #'verdict-debug-group)
+    (define-key map (kbd "C-c t T") #'verdict-debug-test-at-point)
+    (define-key map (kbd "C-c t G") #'verdict-debug-group-at-point)
     (define-key map (kbd "C-c t F") #'verdict-debug-file)
     (define-key map (kbd "C-c t M") #'verdict-debug-module)
     (define-key map (kbd "C-c t P") #'verdict-debug-project)
@@ -991,6 +1061,7 @@ DEBUG is passed to the backend's command function."
     (define-key map (kbd "C-c t k") #'verdict-kill)
     map))
 
+;;;###autoload
 (define-minor-mode verdict-mode
   "Minor mode providing verdict test runner keybindings."
   :lighter " verdict"
