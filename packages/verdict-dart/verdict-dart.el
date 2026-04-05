@@ -78,24 +78,11 @@ used instead of `dart test'.")
 
 
 ;;; Dart String Literal Parsing
-
-(defconst verdict-dart--string-prefixes
-  ;; Ordered longest-first so seq-find matches greedily
-  '(("r\"\"\"" . 4) ("r'''"  . 4)
-    ("\"\"\""  . 3) ("'''"   . 3)
-    ("r\""     . 2) ("r'"    . 2)
-    ("\""      . 1) ("'"     . 1))
-  "Ordered list of (prefix . length) for Dart string literals.")
-
 (defun verdict-dart--string-content (s)
   "Return the content of Dart string literal S, stripping quotes/prefixes."
-  (when-let* ((pair (seq-find (lambda (p) (string-prefix-p (car p) s))
-                              verdict-dart--string-prefixes))
-              (prefix-len (cdr pair))
-              (suffix-len (if (>= prefix-len 3)
-                              ;; Triple-quoted: suffix length equals prefix without 'r'
-                              (if (string-prefix-p "r" (car pair)) 3 prefix-len)
-                            1))
+  (when-let* ((match (string-match "^r?['\"]\\(['\"]['\"]\\)" s))
+              (prefix-len (match-end 0))
+              (suffix-len (if (string-prefix-p "r" s) (1- prefix-len) prefix-len))
               (inner-len  (- (length s) prefix-len suffix-len)))
     (when (>= inner-len 0)
       (substring s prefix-len (+ prefix-len inner-len)))))
@@ -160,13 +147,10 @@ Returns (:kind KIND :name NAME :line LINE) or nil."
 
 (defun verdict-dart--test-at-point ()
   "Return (:file FILE :name NAME) for the test at point, or nil."
-  (let* ((calls (verdict-dart--enclosing-calls))
-         (has-test (seq-find (lambda (c)
-                               (member (plist-get c :kind) '("test" "testWidgets")))
-                             calls)))
-    (when (and calls has-test)
-      (let ((full-name (mapconcat (lambda (c) (plist-get c :name)) calls " ")))
-        (list :file buffer-file-name :name full-name)))))
+  (when-let* ((calls (verdict-dart--enclosing-calls))
+              (has-test (seq-find (lambda (c) (member (plist-get c :kind) '("test" "testWidgets"))) calls))
+              (full-name (mapconcat (lambda (c) (plist-get c :name)) calls " ")))
+    (list :file buffer-file-name :name full-name)))
 
 ;;; Module / Project Root
 
