@@ -1041,23 +1041,32 @@ DEBUG is passed to the backend's command function."
 
 ;;; Minor Mode
 
-(defvar verdict-mode-map
-  (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "C-c C-t t") #'verdict-run-test-at-point)
-    (define-key map (kbd "C-c C-t g") #'verdict-run-group-at-point)
-    (define-key map (kbd "C-c C-t f") #'verdict-run-file)
-    (define-key map (kbd "C-c C-t m") #'verdict-run-module)
-    (define-key map (kbd "C-c C-t p") #'verdict-run-project)
-    (define-key map (kbd "C-c C-t r") #'verdict-run-last)
-    (define-key map (kbd "C-c C-t T") #'verdict-debug-test-at-point)
-    (define-key map (kbd "C-c C-t G") #'verdict-debug-group-at-point)
-    (define-key map (kbd "C-c C-t F") #'verdict-debug-file)
-    (define-key map (kbd "C-c C-t M") #'verdict-debug-module)
-    (define-key map (kbd "C-c C-t P") #'verdict-debug-project)
-    (define-key map (kbd "C-c C-t R") #'verdict-debug-last)
-    (define-key map (kbd "C-c C-t !") #'verdict-rerun-failed)
-    (define-key map (kbd "C-c C-t k") #'verdict-kill)
+(defvar verdict-keymap-prefix (kbd "C-c C-t")
+  "Prefix key for verdict-mode keybindings.")
+
+(defun verdict--make-keymap ()
+  "Build the verdict minor-mode keymap using `verdict-keymap-prefix'."
+  (let ((map (make-sparse-keymap))
+        (prefix-map (make-sparse-keymap)))
+    (define-key prefix-map "t" #'verdict-run-test-at-point)
+    (define-key prefix-map "g" #'verdict-run-group-at-point)
+    (define-key prefix-map "f" #'verdict-run-file)
+    (define-key prefix-map "m" #'verdict-run-module)
+    (define-key prefix-map "p" #'verdict-run-project)
+    (define-key prefix-map "r" #'verdict-run-last)
+    (define-key prefix-map "T" #'verdict-debug-test-at-point)
+    (define-key prefix-map "G" #'verdict-debug-group-at-point)
+    (define-key prefix-map "F" #'verdict-debug-file)
+    (define-key prefix-map "M" #'verdict-debug-module)
+    (define-key prefix-map "P" #'verdict-debug-project)
+    (define-key prefix-map "R" #'verdict-debug-last)
+    (define-key prefix-map "!" #'verdict-rerun-failed)
+    (define-key prefix-map "k" #'verdict-kill)
+    (define-key map verdict-keymap-prefix prefix-map)
     map))
+
+(defvar verdict-mode-map (verdict--make-keymap)
+  "Keymap for `verdict-mode'.")
 
 ;;;###autoload
 (define-minor-mode verdict-mode

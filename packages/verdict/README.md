@@ -32,8 +32,9 @@ M-x package-install RET verdict RET
 
 ## Commands
 
-All commands are available under the `C-c t` prefix when `verdict-mode` is
-active.
+By default, all commands are available under the `C-c t` prefix when
+`verdict-mode` is active. This can be configured by setting
+`verdict-keymap-prefix` before verdict is loaded.
 
 | Key       | Command                    | Description                  |
 |-----------|----------------------------|------------------------------|
@@ -69,6 +70,7 @@ In the results buffer:
 
 | Variable                  | Default             | Description                                                   |
 |---------------------------|---------------------|---------------------------------------------------------------|
+| `verdict-keymap-prefix`   | `C-c C-t`           | Prefix key for all verdict keybindings (set before loading)   |
 | `verdict-project-root-fn` | `project-current`   | Function to find the project root directory                   |
 | `verdict-save-before-run` | `nil` (ask)         | Whether to save current buffer before run: `yes`, `no`, `nil` |
 | `verdict-icon-font`       | auto-detected       | Font for status icons (Braille-capable preferred)             |
