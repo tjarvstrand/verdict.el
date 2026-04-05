@@ -151,7 +151,7 @@ Returns (:kind KIND :name NAME :line LINE) or nil."
          (node       start-node)
          (results    nil))
     (while node
-      (when-let ((info (verdict-dart--call-info-from-node node)))
+      (when-let* ((info (verdict-dart--call-info-from-node node)))
         (push info results))
       (setq node (treesit-node-parent node)))
     results))

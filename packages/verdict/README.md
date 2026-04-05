@@ -255,7 +255,7 @@ A minimal backend skeleton:
 
 (defun my-backend-line-handler (line)
   ;; Parse JSON, emit verdict events
-  (when-let ((data (ignore-errors (json-parse-string line :object-type 'plist))))
+  (when-let* ((data (ignore-errors (json-parse-string line :object-type 'plist))))
     (pcase (plist-get data :event)
       ("testStart"
        (verdict-event (list :type :test-start

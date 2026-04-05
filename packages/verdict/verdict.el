@@ -173,7 +173,7 @@ Defaults to `braille' if a suitable font was auto-detected at load time."
 
 (defun verdict--default-project-root ()
   "Return the project root using `project.el'."
-  (when-let ((proj (project-current t)))
+  (when-let* ((proj (project-current t)))
     (project-root proj)))
 
 (defcustom verdict-project-root-fn #'verdict--default-project-root
@@ -438,7 +438,7 @@ Filters out nodes whose status is in `verdict--hidden-statuses'."
   "Quit the verdict output buffer and return to the verdict buffer."
   (interactive)
   (quit-window nil (selected-window))
-  (when-let ((buf (get-buffer verdict-buffer-name)))
+  (when-let* ((buf (get-buffer verdict-buffer-name)))
     (select-window (or (get-buffer-window buf)
                        (display-buffer buf)))))
 
@@ -488,7 +488,7 @@ PREV is the node's :output before this message; used to add a newline separator.
     (setq verdict--output-node-id id)
     (with-current-buffer (get-buffer-create "*verdict-output*")
       (verdict--write-output-buffer label output)
-      (when-let ((win (display-buffer (current-buffer) '(display-buffer-below-selected))))
+      (when-let* ((win (display-buffer (current-buffer) '(display-buffer-below-selected))))
         (set-window-parameter win 'verdict-managed t)))))
 
 (defun verdict--visit (&optional _arg)
@@ -789,13 +789,13 @@ Must be bound to a mouse click, or EVENT will not be supplied."
 
 (defun verdict--update-mode-line ()
   "Force a mode line update in the verdict buffer."
-  (when-let ((buf (get-buffer verdict-buffer-name)))
+  (when-let* ((buf (get-buffer verdict-buffer-name)))
     (with-current-buffer buf
       (force-mode-line-update))))
 
 (defun verdict--kill-output-buffer ()
   "Kill the *verdict-output* buffer and its verdict-managed window, if any."
-  (when-let ((buf (get-buffer "*verdict-output*")))
+  (when-let* ((buf (get-buffer "*verdict-output*")))
     (dolist (win (get-buffer-window-list buf nil t))
       (when (window-parameter win 'verdict-managed)
         (delete-window win)))
@@ -907,7 +907,7 @@ EVENT must have a :type field with a keyword value."
            (verdict--append-output-buffer id prev msg)))))
 
     (:test-done
-     (when-let ((node (gethash (plist-get event :id) verdict--nodes)))
+     (when-let* ((node (gethash (plist-get event :id) verdict--nodes)))
        (plist-put node :status (plist-get event :result))))
 
     (:done

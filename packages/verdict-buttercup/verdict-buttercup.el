@@ -148,7 +148,7 @@
   "Return a context plist for SCOPE, reading from the current buffer."
   (verdict-buttercup--reset)
   (let ((file (buffer-file-name))
-        (root (or (when-let ((proj (project-current)))
+        (root (or (when-let* ((proj (project-current)))
                     (project-root proj))
                   default-directory)))
     (when (and (not (eq scope :project)) (not file))
