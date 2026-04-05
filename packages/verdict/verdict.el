@@ -249,10 +249,11 @@ PREDICATE is one of:
   - a regexp string      — matched against `buffer-name'
   - a function           — called with no args; non-nil means match
 BACKEND-PLIST keys:
-  :context-fn   — function (scope &optional file-tests) → backend-specific context plist;
-                  called in source buffer.  When FILE-TESTS is provided (an alist
-                  of (FILE . (NAME ...)) entries), use it instead of deriving
-                  from the buffer.
+  :context-fn   — function (scope) → backend-specific context plist;
+                  called in source buffer.  SCOPE is one of:
+                  :test-at-point, :group-at-point, :file, :module, :project,
+                  or (:tests . FILE-TESTS) where FILE-TESTS is an alist of
+                  (FILE . (NAME ...)) entries.
   :command-fn   — function (context debug) → plist with :command :directory :name :header.
                   :command may be a list (verdict manages the process) or a function
                   (custom launch; fn must call `verdict-stop' when done)
@@ -536,7 +537,7 @@ PREV is the node's :output before this message; used to add a newline separator.
          (file-tests (when file
                        (list (if name (list file name) (list file)))))
          (context    (funcall (plist-get verdict--last-backend :context-fn)
-                              :file file-tests)))
+                              (cons :tests file-tests))))
     (verdict--launch verdict--last-backend context nil)))
 
 (defvar verdict--rerun-link-keymap
@@ -1037,7 +1038,7 @@ DEBUG is passed to the backend's command function."
              verdict--nodes)
     (unless file-tests (error "No failed tests to rerun"))
     (let ((context (funcall (plist-get verdict--last-backend :context-fn)
-                            :file file-tests)))
+                            (cons :tests file-tests))))
       (verdict--launch verdict--last-backend context nil))))
 
 

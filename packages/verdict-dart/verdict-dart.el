@@ -419,40 +419,43 @@ EVENT uses keyword keys, vectors for arrays, and :json-false for false."
 
 ;;; Context and Command Functions
 
-(defun verdict-dart--context-fn (scope &optional file-tests)
+(defun verdict-dart--context-fn (scope)
   "Return a context plist for SCOPE, reading from the current buffer.
-When FILE-TESTS is provided (an alist of (FILE . (NAME ...)) entries),
-use it instead of deriving from the buffer.
+SCOPE is a keyword (:test-at-point, :group-at-point, :file, :module,
+:project) or a cons cell (:tests . FILE-TESTS) where FILE-TESTS is
+an alist of (FILE . (NAME ...)) entries.
 Resets per-run parse state as a side effect."
   (setq verdict-dart--group-names    (make-hash-table)
         verdict-dart--file-suite-ids (make-hash-table :test #'equal)
         verdict-dart--loading-tests  (make-hash-table :test #'equal)
         verdict-dart--package-config nil)
-  (if file-tests
-      (let* ((files (mapcar #'car file-tests))
-             (names (mapcan #'cdr (mapcar #'copy-sequence file-tests)))
-             (buffer-file-name (or buffer-file-name (car files))))
-        (list :project (verdict-dart--module-root)
-              :files   files
-              :names   names
-              :name    (car (or names files))))
-    (let* ((buf-file  (buffer-file-name))
-           (test-name (pcase scope
-                        (:test-at-point (plist-get (or (verdict-dart--test-at-point)
-                                                      (error "No test found at point"))
-                                                  :name))
-                        (:group-at-point (let* ((calls (or (verdict-dart--enclosing-calls)
-                                                       (error "No group or test found at point")))
-                                           (groups (seq-filter (lambda (c) (string= (plist-get c :kind) "group")) calls)))
-                                    (unless groups (error "No group found at point"))
-                                    (mapconcat (lambda (c) (plist-get c :name)) groups " ")))
-                        (_ nil))))
-      (list :project (pcase scope
-                       (:project (funcall verdict-project-root-fn))
-                       (_        (verdict-dart--module-root)))
-            :files   (unless (memq scope '(:module :project)) (list buf-file))
-            :names   (when test-name (list test-name))
-            :name    (or test-name (when buf-file (file-name-nondirectory buf-file)))))))
+  (pcase scope
+    (`(:tests . ,file-tests)
+     (let* ((files (mapcar #'car file-tests))
+            (names (mapcan #'cdr (mapcar #'copy-sequence file-tests)))
+            (buffer-file-name (or buffer-file-name (car files))))
+       (list :project (verdict-dart--module-root)
+             :files   files
+             :names   names
+             :name    (car (or names files)))))
+    (_
+     (let* ((buf-file  (buffer-file-name))
+            (test-name (pcase scope
+                         (:test-at-point (plist-get (or (verdict-dart--test-at-point)
+                                                       (error "No test found at point"))
+                                                   :name))
+                         (:group-at-point (let* ((calls (or (verdict-dart--enclosing-calls)
+                                                            (error "No group or test found at point")))
+                                                 (groups (seq-filter (lambda (c) (string= (plist-get c :kind) "group")) calls)))
+                                           (unless groups (error "No group found at point"))
+                                           (mapconcat (lambda (c) (plist-get c :name)) groups " ")))
+                         (_ nil))))
+       (list :project (pcase scope
+                        (:project (funcall verdict-project-root-fn))
+                        (_        (verdict-dart--module-root)))
+             :files   (unless (memq scope '(:module :project)) (list buf-file))
+             :names   (when test-name (list test-name))
+             :name    (or test-name (when buf-file (file-name-nondirectory buf-file))))))))
 
 ;;; Flutter Detection
 

@@ -106,18 +106,23 @@ match.
 ### context-fn
 
 ```
-(context-fn SCOPE &optional FILE-TESTS) -> plist
+(context-fn SCOPE) -> plist
 ```
 
 Called in the user's source buffer (so `buffer-file-name`, `point`, etc. are
 available). Returns a backend-specific context plist that will be passed to
 `command-fn`.
 
-**SCOPE** is one of: `:test-at-point`, `:group-at-point`, `:file`, `:module`, `:project`.
+**SCOPE** is one of:
 
-**FILE-TESTS** (optional) is an alist of `(FILE . (NAME ...))` entries, provided
-when the user invokes `verdict-rerun-failed` or reruns a specific node. When
-present, use it instead of deriving scope from the buffer.
+- `:test-at-point` — run the test at point
+- `:group-at-point` — run the group at point
+- `:file` — run the current file
+- `:module` — run the current module
+- `:project` — run all project tests
+- `(:tests . FILE-TESTS)` — rerun specific tests. `FILE-TESTS` is an alist of
+  `(FILE . (NAME ...))` entries, provided when the user invokes
+  `verdict-rerun-failed` or reruns a specific node.
 
 The returned plist is opaque to verdict — it is passed through to `command-fn`
 unchanged. Include whatever your backend needs (project root, file paths, test
