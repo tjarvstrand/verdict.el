@@ -42,16 +42,14 @@ Or, with `use-package`:
 
 ## Setup
 
-Add `verdict-dart-setup` to your Dart mode hook:
-
 ```elisp
-(add-hook 'dart-ts-mode-hook #'verdict-dart-setup)
+(add-hook 'dart-ts-mode-hook #'verdict-mode)
 ```
 
 Or with `dart-mode`:
 
 ```elisp
-(add-hook 'dart-mode-hook #'verdict-dart-setup)
+(add-hook 'dart-mode-hook #'verdict-mode)
 ```
 
 ## Usage
@@ -60,15 +58,15 @@ With a Dart test file open:
 
 | Key       | Action                            |
 |-----------|-----------------------------------|
-| `C-c t t` | Run test at point                 |
-| `C-c t g` | Run enclosing group               |
-| `C-c t f` | Run current file                  |
-| `C-c t p` | Run all project tests             |
-| `C-c t r` | Rerun last test run               |
-| `C-c t !` | Rerun only failed tests           |
-| `C-c t k` | Kill running test process         |
-| `C-c t T` | Debug test at point               |
-| `C-c t F` | Debug current file                |
+| `C-c C-t t` | Run test at point                 |
+| `C-c C-t g` | Run enclosing group               |
+| `C-c C-t f` | Run current file                  |
+| `C-c C-t p` | Run all project tests             |
+| `C-c C-t r` | Rerun last test run               |
+| `C-c C-t !` | Rerun only failed tests           |
+| `C-c C-t k` | Kill running test process         |
+| `C-c C-t T` | Debug test at point               |
+| `C-c C-t F` | Debug current file                |
 
 Results appear in the `*verdict*` buffer. Press **RET** on a test node to jump
 to its source location. Failed tests show their output in `*verdict-output*`.
@@ -81,10 +79,10 @@ package listed in `verdict-dart-flutter-packages` (default: `("flutter_test")`),
 
 ## Debug Integration
 
-Debug commands (`C-c t T`, etc.) by default use [dape](https://github.com/svaante/dape) if it is installed.
+Debug commands (`C-c C-t T`, etc.) by default use [dape](https://github.com/svaante/dape) if it is installed.
 
 ```elisp
-(use-package dape :ensure t)
+(use-package dape)
 ```
 
 To use a different debugger, set `verdict-dart-debug-fn` to a function that
@@ -96,8 +94,7 @@ accepts a context plist with keys `:project`, `:files`, `:names`, `:name`,
 | Variable                       | Default                          | Description                          |
 |--------------------------------|----------------------------------|--------------------------------------|
 | `verdict-dart-debug-fn`        | uses dape if available           | Function to launch debug sessions    |
-| `verdict-dart-flutter-packages`| `("flutter_test")`               | Package imports that trigger using `flutter`
-instead of `dart`|
+| `verdict-dart-flutter-packages`| `("flutter_test")`               | Package imports that trigger `flutter test` |
 
 ## License
 

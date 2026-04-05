@@ -288,7 +288,7 @@ Returns MESSAGE unchanged if ANCHOR-FILE is nil."
              (mend (match-end 0))
              (action (let ((p path) (ln line) (dir (f-dirname anchor-file)))
                        (lambda (_btn)
-                         (if-let ((abs (verdict-dart--resolve-stack-path p dir)))
+                         (if-let* ((abs (verdict-dart--resolve-stack-path p dir)))
                              (progn (find-file-other-window abs)
                                     (goto-char (point-min))
                                     (forward-line (1- ln)))
@@ -337,7 +337,7 @@ EVENT uses keyword keys, vectors for arrays, and :json-false for false."
                         name)))
            (verdict-event (list :type       :group
                                 :id         id
-                                :parent-id  (if-let ((pname (gethash parent-id verdict-dart--group-names))
+                                :parent-id  (if-let* ((pname (gethash parent-id verdict-dart--group-names))
                                                      ((not (string-empty-p pname))))
                                                 parent-id
                                               (plist-get group :suiteID))
@@ -513,19 +513,14 @@ Returns a plist with :command :directory :name :header."
 
 ;;; Backend Registration
 
-;;;###autoload
-(defun verdict-dart-setup ()
-  "Register the Dart backend for the current buffer's major mode.
-Call this from a mode hook, e.g.:
-
-  (add-hook \\='dart-ts-mode-hook #\\='verdict-dart-setup)"
-  (verdict-register-backend major-mode
-                            #'verdict-dart--context-fn
-                            #'verdict-dart--command-fn
-                            #'verdict-dart--handle-line)
-  (verdict-mode 1))
+(verdict-register-backend "\\.dart\\'"
+                          #'verdict-dart--context-fn
+                          #'verdict-dart--command-fn
+                          #'verdict-dart--handle-line)
 
 ;;; Dape Integration
+
+(declare-function dape "dape" (config))
 
 (defun verdict-dart--dape-debug (context)
   "Launch a dape debug session for a dart/flutter test.

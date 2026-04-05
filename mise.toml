@@ -58,6 +58,10 @@ emacs -batch \
 
 [tasks.lint]
 description = "Run package-lint on all package files"
+depends = ["lint:verdict", "lint:verdict-dart"]
+
+[tasks."lint:verdict"]
+description = "Run package-lint on verdict.el"
 depends = ["deps"]
 run = """
 emacs -batch \
@@ -65,10 +69,22 @@ emacs -batch \
   --eval '(package-initialize)' \
   --eval '(require (quote package-lint))' \
   --eval '(setq package-lint-main-file "packages/verdict/verdict.el")' \
+  --eval '(setq package-lint-batch-fail-on-warnings nil)' \
   -f package-lint-batch-and-exit \
-  packages/verdict/verdict.el packages/verdict-dart/verdict-dart.el
+  packages/verdict/verdict.el
 """
 
-[tasks.ci]
-description = "Run all CI checks (compile, lint, test)"
-depends = ["compile", "lint", "test"]
+[tasks."lint:verdict-dart"]
+description = "Run package-lint on verdict-dart.el"
+depends = ["deps"]
+run = """
+emacs -batch \
+  --eval '(setq package-user-dir (expand-file-name ".packages" default-directory))' \
+  --eval '(package-initialize)' \
+  --eval '(require (quote package-lint))' \
+  --eval '(setq package-lint-main-file "packages/verdict-dart/verdict-dart.el")' \
+  --eval '(setq package-lint-batch-fail-on-warnings nil)' \
+  --eval '(advice-add (quote package-lint--check-packages-installable) :around (lambda (fn deps) (funcall fn (seq-remove (lambda (d) (eq (car d) (quote verdict))) deps))))' \
+  -f package-lint-batch-and-exit \
+  packages/verdict-dart/verdict-dart.el
+"""

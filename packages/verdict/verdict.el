@@ -34,6 +34,7 @@
 (require 'ansi-color)
 (require 'dash)
 (require 's)
+(require 'project)
 
 ;;; Customization
 
@@ -238,27 +239,24 @@ nil   — prompt before each run, then offer to remember the answer."
   "Name of the verdict results buffer.")
 
 (defvar verdict-log-events nil
-  "Whether to print runner events to the messages buffer")
+  "Whether to print runner events to the messages buffer.")
 
 ;;; Backend Registration
 
 (defvar verdict--backends nil
-  "Alist of (PREDICATE . BACKEND-PLIST) entries, most recently registered first.
+  "Alist of (PREDICATE . BACKEND-PLIST) entries.
+Most recently registered first.
 PREDICATE is one of:
-  - a major-mode symbol  — matched with `derived-mode-p'
-  - a regexp string      — matched against `buffer-name'
-  - a function           — called with no args; non-nil means match
+  - a major-mode symbol — matched with `derived-mode-p'
+  - a regexp string — matched against `buffer-name'
+  - a function — called with no args; non-nil means match
 BACKEND-PLIST keys:
-  :context-fn   — function (scope) → backend-specific context plist;
-                  called in source buffer.  SCOPE is one of:
-                  :test-at-point, :group-at-point, :file, :module, :project,
-                  or (:tests . FILE-TESTS) where FILE-TESTS is an alist of
-                  (FILE . (NAME ...)) entries.
-  :command-fn   — function (context debug) → plist with :command :directory :name :header.
-                  :command may be a list (verdict manages the process) or a function
-                  (custom launch; fn must call `verdict-stop' when done)
-                  :header is an optional string displayed at the top of the verdict buffer
-  :line-handler — function (line) called per complete output line")
+  :context-fn — (scope) -> context plist.
+    SCOPE: :test-at-point, :group-at-point, :file,
+    :module, :project, or (:tests . FILE-TESTS).
+  :command-fn — (context debug) -> plist with
+    :command, :directory, :name, :header.
+  :line-handler — (line) called per output line.")
 
 (defun verdict--match-predicate (predicate)
   "Return non-nil if PREDICATE matches the current buffer."
@@ -355,10 +353,11 @@ See `verdict--backends' for the supported predicate forms."
      (propertize " "  'face `(:inherit ,face)))))
 
 (defun verdict--render-message (severity message)
-  "Return MESSAGE, optionally with error face applied."
-  (when (eq severity 'error)
-    (add-face-text-property 0 (length message) 'verdict-error-face nil message))
-  message)
+  "Return a copy of MESSAGE with error face applied when SEVERITY is `error'."
+  (let ((msg (copy-sequence message)))
+    (when (eq severity 'error)
+      (add-face-text-property 0 (length msg) 'verdict-error-face nil msg))
+    msg))
 
 ;;; Build Display Tree
 
@@ -648,6 +647,8 @@ Must be bound to a mouse click, or EVENT will not be supplied."
 
 ;;; Render
 
+(defvar verdict--mode-line-format)  ; defined below
+
 (defun verdict--schedule-render ()
   "Schedule a render in 0.1 seconds, if one is not already pending."
   (unless verdict--render-timer
@@ -655,7 +656,7 @@ Must be bound to a mouse click, or EVENT will not be supplied."
           (run-with-timer 0.1 nil #'verdict--render))))
 
 (defun verdict--render ()
-  "Convert state to display model and refresh the verdict buffer. Returns the verdict buffer"
+  "Convert state to display model and refresh the verdict buffer."
   (setq verdict--render-timer nil)
   (setq verdict-model (verdict--build-tree verdict--root-ids))
 
@@ -760,7 +761,7 @@ Must be bound to a mouse click, or EVENT will not be supplied."
                            'help-echo "Kill running tests"
                            'local-map (let ((map (make-sparse-keymap)))
                                         (define-key map [mode-line mouse-1]
-                                          (lambda (e) (interactive "e") (verdict-kill)))
+                                          (lambda (_e) (interactive "e") (verdict-kill)))
                                         map)))))
     ('finished
      (let* ((counts (verdict--count-by-status))
@@ -813,9 +814,7 @@ Must be bound to a mouse click, or EVENT will not be supplied."
   (setq verdict-model nil)
   (setq verdict--output-node-id nil)
   (setq verdict--run-state nil)
-  (setq verdict--hidden-statuses nil)
-)
-
+  (setq verdict--hidden-statuses nil))
 
 (defun verdict--maybe-save-buffer ()
   "Save the current buffer before a run, respecting `verdict-save-before-run'."
@@ -836,9 +835,8 @@ Must be bound to a mouse click, or EVENT will not be supplied."
                    (customize-save-variable 'verdict-save-before-run 'yes))
          ("never"  (customize-save-variable 'verdict-save-before-run 'no)))))))
 
-(defun verdict-start (type name)
-  "Reset state and display the (empty) verdict buffer.
-TYPE is one of :project :module :file :group-at-point :test-at-point. NAME is a string or nil."
+(defun verdict-start ()
+  "Reset state and display the (empty) verdict buffer."
   (verdict--maybe-save-buffer)
   (verdict-reset)
   (setq verdict--run-state 'running)
@@ -948,10 +946,9 @@ EVENT must have a :type field with a keyword value."
   (let* ((spec (funcall (plist-get backend :command-fn) context debug))
          (cmd  (plist-get spec :command))
          (dir  (or (plist-get spec :directory) default-directory))
-         (name (plist-get spec :name))
          (default-directory dir))
     (setq verdict--run-header (plist-get spec :header))
-    (verdict-start nil name)
+    (verdict-start)
     (if (functionp cmd)
         (funcall cmd)
       (setq verdict--proc
@@ -1046,20 +1043,20 @@ DEBUG is passed to the backend's command function."
 
 (defvar verdict-mode-map
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "C-c t t") #'verdict-run-test-at-point)
-    (define-key map (kbd "C-c t g") #'verdict-run-group-at-point)
-    (define-key map (kbd "C-c t f") #'verdict-run-file)
-    (define-key map (kbd "C-c t m") #'verdict-run-module)
-    (define-key map (kbd "C-c t p") #'verdict-run-project)
-    (define-key map (kbd "C-c t r") #'verdict-run-last)
-    (define-key map (kbd "C-c t T") #'verdict-debug-test-at-point)
-    (define-key map (kbd "C-c t G") #'verdict-debug-group-at-point)
-    (define-key map (kbd "C-c t F") #'verdict-debug-file)
-    (define-key map (kbd "C-c t M") #'verdict-debug-module)
-    (define-key map (kbd "C-c t P") #'verdict-debug-project)
-    (define-key map (kbd "C-c t R") #'verdict-debug-last)
-    (define-key map (kbd "C-c t !") #'verdict-rerun-failed)
-    (define-key map (kbd "C-c t k") #'verdict-kill)
+    (define-key map (kbd "C-c C-t t") #'verdict-run-test-at-point)
+    (define-key map (kbd "C-c C-t g") #'verdict-run-group-at-point)
+    (define-key map (kbd "C-c C-t f") #'verdict-run-file)
+    (define-key map (kbd "C-c C-t m") #'verdict-run-module)
+    (define-key map (kbd "C-c C-t p") #'verdict-run-project)
+    (define-key map (kbd "C-c C-t r") #'verdict-run-last)
+    (define-key map (kbd "C-c C-t T") #'verdict-debug-test-at-point)
+    (define-key map (kbd "C-c C-t G") #'verdict-debug-group-at-point)
+    (define-key map (kbd "C-c C-t F") #'verdict-debug-file)
+    (define-key map (kbd "C-c C-t M") #'verdict-debug-module)
+    (define-key map (kbd "C-c C-t P") #'verdict-debug-project)
+    (define-key map (kbd "C-c C-t R") #'verdict-debug-last)
+    (define-key map (kbd "C-c C-t !") #'verdict-rerun-failed)
+    (define-key map (kbd "C-c C-t k") #'verdict-kill)
     map))
 
 ;;;###autoload

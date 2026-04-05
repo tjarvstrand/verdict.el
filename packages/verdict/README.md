@@ -37,20 +37,20 @@ active.
 
 | Key       | Command                    | Description                  |
 |-----------|----------------------------|------------------------------|
-| `C-c t t` | `verdict-run-test-at-point`     | Run test at point            |
-| `C-c t g` | `verdict-run-group-at-point`        | Run enclosing group          |
-| `C-c t f` | `verdict-run-file`         | Run current file             |
-| `C-c t m` | `verdict-run-module`       | Run current module           |
-| `C-c t p` | `verdict-run-project`      | Run all project tests        |
-| `C-c t r` | `verdict-run-last`         | Rerun last test run          |
-| `C-c t !` | `verdict-rerun-failed`     | Rerun only failed tests      |
-| `C-c t k` | `verdict-kill`             | Kill running test process    |
-| `C-c t T` | `verdict-debug-test-at-point`   | Debug test at point          |
-| `C-c t G` | `verdict-debug-group-at-point`      | Debug enclosing group        |
-| `C-c t F` | `verdict-debug-file`       | Debug current file           |
-| `C-c t M` | `verdict-debug-module`     | Debug current module         |
-| `C-c t P` | `verdict-debug-project`    | Debug all project tests      |
-| `C-c t R` | `verdict-debug-last`       | Debug last test run          |
+| `C-c C-t t` | `verdict-run-test-at-point`     | Run test at point            |
+| `C-c C-t g` | `verdict-run-group-at-point`        | Run enclosing group          |
+| `C-c C-t f` | `verdict-run-file`         | Run current file             |
+| `C-c C-t m` | `verdict-run-module`       | Run current module           |
+| `C-c C-t p` | `verdict-run-project`      | Run all project tests        |
+| `C-c C-t r` | `verdict-run-last`         | Rerun last test run          |
+| `C-c C-t !` | `verdict-rerun-failed`     | Rerun only failed tests      |
+| `C-c C-t k` | `verdict-kill`             | Kill running test process    |
+| `C-c C-t T` | `verdict-debug-test-at-point`   | Debug test at point          |
+| `C-c C-t G` | `verdict-debug-group-at-point`      | Debug enclosing group        |
+| `C-c C-t F` | `verdict-debug-file`       | Debug current file           |
+| `C-c C-t M` | `verdict-debug-module`     | Debug current module         |
+| `C-c C-t P` | `verdict-debug-project`    | Debug all project tests      |
+| `C-c C-t R` | `verdict-debug-last`       | Debug last test run          |
 
 In the results buffer:
 
@@ -203,10 +203,10 @@ Appends output to a node.
 |--------------|-------------------------|----------|----------------------------|
 | `:type`      | `:log`                  | yes      |                            |
 | `:id`        | id (existing)           | yes      | Target node                |
-| `:severity`  | `:info` or `:error`     | yes      | Controls face styling      |
+| `:severity`  | `info` or `error`       | yes      | Controls face styling      |
 | `:message`   | string                  | yes      | Log text                   |
 
-`:error` messages are displayed with `verdict-error-face`. `:info` messages are
+`error` messages are displayed with `verdict-error-face`. `info` messages are
 plain.
 
 #### `:test-done`
@@ -229,7 +229,7 @@ Signals the entire test run is complete. No additional keys.
 
 ### Lifecycle
 
-1. User triggers a run (e.g. `C-c t f`).
+1. User triggers a run (e.g. `C-c C-t f`).
 2. Verdict calls `context-fn` in the user's source buffer.
 3. Verdict calls `command-fn` with the context.
 4. Verdict starts the process (or calls the custom launcher).
@@ -243,7 +243,7 @@ Signals the entire test run is complete. No additional keys.
 A minimal backend skeleton:
 
 ```elisp
-(defun my-backend-context (scope &optional file-tests)
+(defun my-backend-context (scope)
   (list :project (verdict--default-project-root)
         :file    (buffer-file-name)
         :scope   scope))
