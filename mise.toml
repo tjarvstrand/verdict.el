@@ -69,7 +69,7 @@ emacs -batch \
   --eval '(package-initialize)' \
   --eval '(require (quote package-lint))' \
   --eval '(setq package-lint-main-file "packages/verdict/verdict.el")' \
-  --eval '(setq package-lint-batch-fail-on-warnings nil)' \
+  --eval '(setq package-lint-batch-fail-on-warnings t)' \
   -f package-lint-batch-and-exit \
   packages/verdict/verdict.el
 """
@@ -83,8 +83,22 @@ emacs -batch \
   --eval '(package-initialize)' \
   --eval '(require (quote package-lint))' \
   --eval '(setq package-lint-main-file "packages/verdict-dart/verdict-dart.el")' \
-  --eval '(setq package-lint-batch-fail-on-warnings nil)' \
+  --eval '(setq package-lint-batch-fail-on-warnings t)' \
   --eval '(advice-add (quote package-lint--check-packages-installable) :around (lambda (fn deps) (funcall fn (seq-remove (lambda (d) (eq (car d) (quote verdict))) deps))))' \
   -f package-lint-batch-and-exit \
   packages/verdict-dart/verdict-dart.el
+"""
+
+[tasks.checkdoc]
+description = "Check documentation strings"
+depends = ["deps"]
+run = """
+emacs -batch \
+  --eval '(setq package-user-dir (expand-file-name ".packages" default-directory))' \
+  --eval '(package-initialize)' \
+  -L packages/verdict \
+  -L packages/verdict-dart \
+  --eval '(require (quote checkdoc))' \
+  --eval '(let ((warning-minimum-log-level :error)) (checkdoc-file "packages/verdict/verdict.el"))' \
+  --eval '(let ((warning-minimum-log-level :error)) (checkdoc-file "packages/verdict-dart/verdict-dart.el"))'
 """

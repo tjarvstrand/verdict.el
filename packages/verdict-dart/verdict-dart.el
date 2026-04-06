@@ -30,6 +30,7 @@
 ;;; Code:
 
 (require 'verdict)
+(require 'cl-generic)
 (require 'treesit)
 (require 'f)
 (require 'yaml)
@@ -80,7 +81,7 @@ used instead of `dart test'.")
 ;;; Dart String Literal Parsing
 (defun verdict-dart--string-content (s)
   "Return the content of Dart string literal S, stripping quotes/prefixes."
-  (when-let* ((match (string-match "^r?['\"]\\(['\"]['\"]\\)" s))
+  (when-let* ((match (string-match "^r?['\"]\\(['\"]['\"]\\)?" s))
               (prefix-len (match-end 0))
               (suffix-len (if (string-prefix-p "r" s) (1- prefix-len) prefix-len))
               (inner-len  (- (length s) prefix-len suffix-len)))
@@ -527,17 +528,16 @@ CONTEXT is a plist with :project, :file, :names, :name, :runner."
                       ,@(when flutter-p '(:toolArgs ["-d" "all"])))))
     (dape config)))
 
-(with-eval-after-load 'dape
-  (cl-defmethod dape-handle-event
-    (_conn (_event (eql dart.testNotification)) body)
-    "Forward Dart test notifications to verdict."
-    (verdict-dart--handle-event body))
+(cl-defmethod dape-handle-event
+  (_conn (_event (eql dart.testNotification)) body)
+  "Forward Dart test notification BODY to verdict."
+  (verdict-dart--handle-event body))
 
-  (cl-defmethod dape-handle-event :after
-    (_conn (_event (eql terminated)) _body)
-    "Stop verdict when the dape session terminates."
-    (when (eq verdict--run-state 'running)
-      (verdict-stop))))
+(cl-defmethod dape-handle-event :after
+  (_conn (_event (eql terminated)) _body)
+  "Stop verdict when the dape session terminates."
+  (when (eq verdict--run-state 'running)
+    (verdict-stop)))
 
 (provide 'verdict-dart)
 ;;; verdict-dart.el ends here

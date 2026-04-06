@@ -74,7 +74,7 @@
   "Face for test name header in the output buffer.")
 
 (defface verdict-button-face
-  '((t :inherit button :underline nil))
+  '((t :inherit shadow))
   "Face for clickable buttons in verdict buffers.")
 
 ;; Mode-line face variants
@@ -179,7 +179,7 @@ Defaults to `braille' if a suitable font was auto-detected at load time."
 
 (defcustom verdict-project-root-fn #'verdict--default-project-root
   "Function to find the project root directory.
-Called with no arguments in the source buffer. Should return a directory path."
+Called with no arguments in the source buffer.  Should return a directory path."
   :type 'function
   :group 'verdict)
 
@@ -343,7 +343,7 @@ See `verdict--backends' for the supported predicate forms."
   (verdict--render-icon status (if open verdict-icon-open verdict-icon-closed)))
 
 (defun verdict--render-icon (status icon-char)
-  "Return propertized group icon string for ICON-CHAR."
+  "Return propertized icon string for STATUS using ICON-CHAR."
   (let* ((face (verdict--status-face status))
          (icon-face (if verdict-icon-font
                         `(:inherit ,face :family ,verdict-icon-font)
@@ -362,7 +362,8 @@ See `verdict--backends' for the supported predicate forms."
 ;;; Build Display Tree
 
 (defun verdict--output-node (parent-id parent-label output)
-  "Return a synthetic *output* leaf plist for PARENT-ID with OUTPUT."
+  "Return a synthetic *output* leaf plist for PARENT-ID.
+PARENT-LABEL is used as the title.  OUTPUT is the log text."
   (list :id        (format "output-%s" parent-id)
         :source-id parent-id
         :label     (propertize "<init>" 'face 'verdict-init-face)
@@ -509,7 +510,8 @@ PREV is the node's :output before this message; used to add a newline separator.
   "Keymap for the visit-file link icon in verdict nodes.")
 
 (defun verdict--visit-link-click (event)
-  "Visit the file/line for the node whose link icon was clicked."
+  "Visit the file/line for the node whose link icon was clicked.
+EVENT is the mouse event."
   (interactive "e")
   (let ((pos (posn-point (event-start event))))
     (when pos
@@ -546,7 +548,8 @@ PREV is the node's :output before this message; used to add a newline separator.
   "Keymap for the rerun link icon in verdict nodes.")
 
 (defun verdict--rerun-link-click (event)
-  "Rerun the test/group whose rerun link was clicked."
+  "Rerun the test/group whose rerun link was clicked.
+EVENT is the mouse event."
   (interactive "e")
   (let ((pos (posn-point (event-start event))))
     (when pos
@@ -554,7 +557,7 @@ PREV is the node's :output before this message; used to add a newline separator.
       (verdict--rerun-at-node))))
 
 (defun verdict--rerun-link (item)
-  "Return a propertized rerun link string, or nil for output nodes."
+  "Return a propertized rerun link string for ITEM, or nil for output nodes."
   (unless (plist-get item :source-id)
     (propertize " ⟲" 'face 'verdict-button-face
                       'keymap verdict--rerun-link-keymap
@@ -803,7 +806,7 @@ Must be bound to a mouse click, or EVENT will not be supplied."
     (kill-buffer buf)))
 
 (defun verdict-reset ()
-  "Clear all internal verdict state. Does not render."
+  "Clear all internal verdict state.  Does not render."
   (verdict--kill-output-buffer)
   (verdict--spinner-stop)
   (clrhash verdict--nodes)
@@ -928,7 +931,7 @@ EVENT must have a :type field with a keyword value."
       (funcall handler line))))
 
 (defun verdict--sentinel (proc event)
-  "Flush partial buffer and finalize state when process exits."
+  "Handle PROC exit EVENT by flushing partial buffer and finalizing state."
   (let ((handler (plist-get verdict--proc-backend :line-handler)))
     (unless (string-empty-p verdict--partial)
       (funcall handler verdict--partial)
@@ -963,7 +966,7 @@ EVENT must have a :type field with a keyword value."
       (message "verdict: in %s" dir))))
 
 (defun verdict--run (scope debug)
-  "Run tests for SCOPE using the backend matching the current buffer.
+  "Run test SCOPE using the backend matching the current buffer.
 DEBUG is passed to the backend's command function."
   (let* ((backend (verdict--active-backend))
          (context (funcall (plist-get backend :context-fn) scope)))
@@ -982,25 +985,45 @@ DEBUG is passed to the backend's command function."
 ;;; Public Run Commands
 
 ;;;###autoload
-(defun verdict-run-test-at-point ()   (interactive) (verdict--run :test-at-point nil))
+(defun verdict-run-test-at-point ()
+  "Run the test at point."
+  (interactive) (verdict--run :test-at-point nil))
 ;;;###autoload
-(defun verdict-run-group-at-point ()      (interactive) (verdict--run :group-at-point nil))
+(defun verdict-run-group-at-point ()
+  "Run the test group at point."
+  (interactive) (verdict--run :group-at-point nil))
 ;;;###autoload
-(defun verdict-run-file ()       (interactive) (verdict--run :file nil))
+(defun verdict-run-file ()
+  "Run the current file."
+  (interactive) (verdict--run :file nil))
 ;;;###autoload
-(defun verdict-run-module ()     (interactive) (verdict--run :module nil))
+(defun verdict-run-module ()
+  "Run the current module."
+  (interactive) (verdict--run :module nil))
 ;;;###autoload
-(defun verdict-run-project ()    (interactive) (verdict--run :project nil))
+(defun verdict-run-project ()
+  "Run the entire project."
+  (interactive) (verdict--run :project nil))
 ;;;###autoload
-(defun verdict-debug-test-at-point () (interactive) (verdict--run :test-at-point t))
+(defun verdict-debug-test-at-point ()
+  "Debug the test at point."
+  (interactive) (verdict--run :test-at-point t))
 ;;;###autoload
-(defun verdict-debug-group-at-point ()    (interactive) (verdict--run :group-at-point t))
+(defun verdict-debug-group-at-point ()
+  "Debug the test group at point."
+  (interactive) (verdict--run :group-at-point t))
 ;;;###autoload
-(defun verdict-debug-file ()     (interactive) (verdict--run :file t))
+(defun verdict-debug-file ()
+  "Debug the current file."
+  (interactive) (verdict--run :file t))
 ;;;###autoload
-(defun verdict-debug-module ()   (interactive) (verdict--run :module t))
+(defun verdict-debug-module ()
+  "Debug the current module."
+  (interactive) (verdict--run :module t))
 ;;;###autoload
-(defun verdict-debug-project ()  (interactive) (verdict--run :project t))
+(defun verdict-debug-project ()
+  "Debug the entire project."
+  (interactive) (verdict--run :project t))
 
 ;;;###autoload
 (defun verdict-run-last ()
@@ -1018,7 +1041,7 @@ DEBUG is passed to the backend's command function."
 
 ;;;###autoload
 (defun verdict-rerun-failed ()
-  "Rerun only the failed tests from the last run."
+  "Rerun failed test cases from the last run."
   (interactive)
   (unless verdict--last-context (error "No previous verdict run to repeat"))
   (unless verdict--last-backend (error "No previous verdict backend"))

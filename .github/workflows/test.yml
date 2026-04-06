@@ -36,5 +36,8 @@ jobs:
       - name: Lint
         run: mise run lint
 
+      - name: Checkdoc
+        run: mise run checkdoc
+
       - name: Test
         run: mise run test
