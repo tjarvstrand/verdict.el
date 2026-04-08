@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  echo "Usage: $0 <major|minor|patch> [package ...]"
+  echo "  package: verdict, verdict-dart, etc. (defaults to all packages)"
+  exit 1
+}
+
+[[ $# -ge 1 ]] || usage
+
+bump="$1"; shift
+[[ "$bump" =~ ^(major|minor|patch)$ ]] || usage
+
+if command -v jj &>/dev/null; then
+  [[ -z "$(jj diff -s)" ]] || { echo "Error: working copy has uncommitted changes"; exit 1; }
+else
+  [[ -z "$(git status --porcelain)" ]] || { echo "Error: working tree is not clean"; exit 1; }
+fi
+
+if [[ $# -eq 0 ]]; then
+  set -- $(for d in packages/*/; do
+    p=$(basename "$d")
+    [[ -f "packages/${p}/CHANGELOG.md" ]] && echo "$p"
+  done)
+fi
+
+today=$(date +%Y-%m-%d)
+commit_lines=("Release:")
+tags=()
+files=()
+
+for package in "$@"; do
+  file="packages/${package}/${package}.el"
+  changelog="packages/${package}/CHANGELOG.md"
+
+  [[ -f "$file" ]] || { echo "Error: $file not found"; exit 1; }
+  [[ -f "$changelog" ]] || { echo "Error: $changelog not found"; exit 1; }
+
+  # Extract current version
+  current=$(grep -m1 '^;; Version:' "$file" | sed 's/;; Version: *//')
+  IFS='.' read -r major minor patch_v <<< "$current"
+
+  # Bump
+  case "$bump" in
+    major) major=$((major + 1)); minor=0; patch_v=0 ;;
+    minor) minor=$((minor + 1)); patch_v=0 ;;
+    patch) patch_v=$((patch_v + 1)) ;;
+  esac
+  new="${major}.${minor}.${patch_v}"
+  tag="${package}-v${new}"
+
+  echo "Bumping ${package}: ${current} -> ${new}"
+
+  # Update version in .el file
+  perl -i -pe "s/^;; Version: ${current}/;; Version: ${new}/" "$file"
+
+  # Update changelog
+  perl -i -pe "s/^## \[Unreleased\]/## [Unreleased]\n\n## [${new}] - ${today}/" "$changelog"
+  perl -i -pe "s|^\[Unreleased\]: (.*)/compare/.*?\.\.\.HEAD|[Unreleased]: \$1/compare/${tag}...HEAD\n[${new}]: \$1/compare/${package}-v${current}...${tag}|" "$changelog"
+
+  commit_lines+=(" - ${package} ${new}")
+  tags+=("$tag")
+done
+
+# Commit and push
+msg=$(printf '%s\n' "${commit_lines[@]}")
+if command -v jj &>/dev/null; then
+  jj commit -m "$msg"
+  jj bookmark set -r@- main
+  jj git push
+  commit=$(jj log -r @- --no-graph -T 'commit_id')
+else
+  git add -u
+  git commit -m "$msg"
+  git push
+  commit="HEAD"
+fi
+
+# Tag and push tags
+for tag in "${tags[@]}"; do
+  git tag "$tag" "$commit"
+done
+git push origin "${tags[@]}"
+
+echo "Released: ${tags[*]}"

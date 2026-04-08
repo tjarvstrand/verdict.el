@@ -1,17 +1,29 @@
 # verdict
 
 [![MELPA](https://melpa.org/packages/verdict-badge.svg)](https://melpa.org/#/verdict)
+[![standard-readme compliant](https://img.shields.io/badge/readme%20style-standard-brightgreen.svg)](https://github.com/RichardLitt/standard-readme)
+[![Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog%20v1.1.0-%23E05735)](CHANGELOG.md)
 
 Generic test runner for Emacs with a treemacs-based results UI.
 
 Verdict provides a framework for running tests and displaying results in a
 tree view. Language-specific backends plug in via a simple registration API.
 
+## Table of Contents
+
+- [Available Backends](#available-backends)
+- [Install](#install)
+- [Usage](#usage)
+- [Configuration](#configuration)
+- [API](#api)
+- [Contributing](#contributing)
+- [License](#license)
+
 ## Available Backends
 
 - [verdict-dart](../../packages/verdict-dart/) — Dart and Flutter
 
-## Installation
+## Install
 
 ### MELPA
 
@@ -25,46 +37,44 @@ M-x package-install RET verdict RET
 (use-package verdict)
 ```
 
-## Get started
+## Usage
 
 1. Install and configure a verdict backend (e.g. `verdict-dart`).
 2. Run tests with the keybindings below.
-
-## Commands
 
 By default, all commands are available under the `C-c t` prefix when
 `verdict-mode` is active. This can be configured by setting
 `verdict-keymap-prefix` before verdict is loaded.
 
-| Key       | Command                    | Description                  |
-|-----------|----------------------------|------------------------------|
-| `C-c C-t t` | `verdict-run-test-at-point`     | Run test at point            |
-| `C-c C-t g` | `verdict-run-group-at-point`        | Run enclosing group          |
-| `C-c C-t f` | `verdict-run-file`         | Run current file             |
-| `C-c C-t m` | `verdict-run-module`       | Run current module           |
-| `C-c C-t p` | `verdict-run-project`      | Run all project tests        |
-| `C-c C-t r` | `verdict-run-last`         | Rerun last test run          |
-| `C-c C-t !` | `verdict-rerun-failed`     | Rerun only failed tests      |
-| `C-c C-t k` | `verdict-kill`             | Kill running test process    |
-| `C-c C-t T` | `verdict-debug-test-at-point`   | Debug test at point          |
-| `C-c C-t G` | `verdict-debug-group-at-point`      | Debug enclosing group        |
-| `C-c C-t F` | `verdict-debug-file`       | Debug current file           |
-| `C-c C-t M` | `verdict-debug-module`     | Debug current module         |
-| `C-c C-t P` | `verdict-debug-project`    | Debug all project tests      |
-| `C-c C-t R` | `verdict-debug-last`       | Debug last test run          |
+| Key         | Command                         | Description               |
+|-------------|---------------------------------|---------------------------|
+| `C-c C-t t` | `verdict-run-test-at-point`    | Run test at point         |
+| `C-c C-t g` | `verdict-run-group-at-point`   | Run enclosing group       |
+| `C-c C-t f` | `verdict-run-file`             | Run current file          |
+| `C-c C-t m` | `verdict-run-module`           | Run current module        |
+| `C-c C-t p` | `verdict-run-project`          | Run all project tests     |
+| `C-c C-t r` | `verdict-run-last`             | Rerun last test run       |
+| `C-c C-t !` | `verdict-rerun-failed`         | Rerun only failed tests   |
+| `C-c C-t k` | `verdict-kill`                 | Kill running test process |
+| `C-c C-t T` | `verdict-debug-test-at-point`  | Debug test at point       |
+| `C-c C-t G` | `verdict-debug-group-at-point` | Debug enclosing group     |
+| `C-c C-t F` | `verdict-debug-file`           | Debug current file        |
+| `C-c C-t M` | `verdict-debug-module`         | Debug current module      |
+| `C-c C-t P` | `verdict-debug-project`        | Debug all project tests   |
+| `C-c C-t R` | `verdict-debug-last`           | Debug last test run       |
 
 In the results buffer:
 
-| Key          | Action                                          |
-|--------------|-------------------------------------------------|
-| **TAB**      | Expand/collapse group, or show test output       |
-| **RET**      | Visit test file/line                             |
-| **click**    | Expand/collapse group, or show test output       |
-| **dbl-click**| Visit test file/line                             |
-| `r`          | Rerun test/group at point                        |
-| `R`          | Rerun last test run                              |
-| `!`          | Rerun only failed tests                          |
-| `k`          | Kill running test process                        |
+| Key          | Action                                     |
+|--------------|--------------------------------------------|
+| **TAB**      | Expand/collapse group, or show test output  |
+| **RET**      | Visit test file/line                        |
+| **click**    | Expand/collapse group, or show test output  |
+| **dbl-click**| Visit test file/line                        |
+| `r`          | Rerun test/group at point                   |
+| `R`          | Rerun last test run                         |
+| `!`          | Rerun only failed tests                     |
+| `k`          | Kill running test process                   |
 
 ## Configuration
 
@@ -81,7 +91,7 @@ In the results buffer:
 | `verdict-icon-error`      | `!`                 | Icon for errored tests                                        |
 | `verdict-icon-skipped`    | `-`                 | Icon for skipped tests                                        |
 
-## Writing a Backend
+## API
 
 A verdict backend connects a language-specific test runner to the verdict UI.
 To create one, you implement three functions and register them with
@@ -287,6 +297,10 @@ A minimal backend skeleton:
 - Status transitions: `running` -> `passed` | `failed` | `error` | `skipped` | `stopped`.
 - Groups have `:children` (list of child IDs). Leaf nodes (tests) do not.
 - Only one test run can be active at a time.
+
+## Contributing
+
+PRs are welcome. Please open an issue first to discuss larger changes.
 
 ## License
 
