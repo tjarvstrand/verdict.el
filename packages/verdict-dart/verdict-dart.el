@@ -418,7 +418,7 @@ Resets per-run parse state as a side effect."
     (`(:tests . ,file-tests)
      (let* ((files (mapcar #'car file-tests))
             (names (mapcan #'cdr (mapcar #'copy-sequence file-tests)))
-            (buffer-file-name (or buffer-file-name (car files))))
+            (buffer-file-name (car files)))
        (list :project (verdict-dart--module-root)
              :files   files
              :names   names

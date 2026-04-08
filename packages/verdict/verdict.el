@@ -622,9 +622,10 @@ Must be bound to a mouse click, or EVENT will not be supplied."
   "Insert status filter buttons at the top of the verdict buffer."
   (require 'cus-edit)
   (let* ((counts (verdict--count-by-status))
-         (order '(passed failed error skipped stopped)))
+         (order '(running passed failed error skipped stopped)))
+    (insert "\n")
     (when counts
-      (insert "\nShow: ")
+      (insert "Show: ")
       (dolist (status order)
         (when-let* ((count (cdr (assq status counts))))
           (let* ((hidden (memq status verdict--hidden-statuses))
@@ -645,8 +646,8 @@ Must be bound to a mouse click, or EVENT will not be supplied."
              'action action
              'follow-link t
              'help-echo help)
-            (insert "  "))))
-      (insert "\n\n"))))
+            (insert "  ")))))
+    (insert "\n\n")))
 
 ;;; Render
 

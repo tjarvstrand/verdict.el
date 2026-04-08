@@ -5,7 +5,8 @@
 (defun verdict-demo ()
   "Simulate a dart test run by feeding timed events to verdict."
   (interactive)
-  (verdict-start :project nil)
+  (setq verdict--run-header "$ dart test -r json\n  in /my/project")
+  (verdict-start)
   (let ((events
          ;; Each entry is (delay-seconds . event-plist)
          ;; Phases:
