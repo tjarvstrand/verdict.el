@@ -2,7 +2,7 @@
 
 ;; Author: Thomas Järvstrand
 ;; Maintainer: Thomas Järvstrand
-;; Version: 0.1.0
+;; Version: 0.1.1
 ;; URL: https://github.com/tjarvstrand/verdict.el
 ;; Keywords: tools, processes
 ;; Package-Requires: ((emacs "29.1") (treemacs "3.0") (dash "2.0") (s "1.0"))
