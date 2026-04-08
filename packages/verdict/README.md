@@ -9,6 +9,8 @@ Generic test runner for Emacs with a treemacs-based results UI.
 Verdict provides a framework for running tests and displaying results in a
 tree view. Language-specific backends plug in via a simple registration API.
 
+![verdict demo](https://raw.githubusercontent.com/tjarvstrand/verdict.el/main/assets/verdict-demo.gif)
+
 ## Table of Contents
 
 - [Available Backends](#available-backends)
