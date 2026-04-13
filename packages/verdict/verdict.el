@@ -1,11 +1,11 @@
 ;;; verdict.el --- Generic test runner with treemacs results UI -*- lexical-binding: t -*-
 
-;; Author: Thomas Järvstrand
-;; Maintainer: Thomas Järvstrand
+;; Author: Thomas Järvstrand <https://github.com/tjarvstrand>
+;; Maintainer: Thomas Järvstrand <https://github.com/tjarvstrand>
 ;; Version: 0.1.1
 ;; URL: https://github.com/tjarvstrand/verdict.el
 ;; Keywords: tools, processes
-;; Package-Requires: ((emacs "29.1") (treemacs "3.0") (dash "2.0") (s "1.0"))
+;; Package-Requires: ((emacs "29.1") (treemacs "3.0") (dash "2.0"))
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 
 ;; This program is free software; you can redistribute it and/or modify
@@ -32,8 +32,10 @@
 
 (require 'treemacs-treelib)
 (require 'ansi-color)
+(require 'subr-x)
+
+(declare-function treemacs-define-doubleclick-action "treemacs-mouse-interface")
 (require 'dash)
-(require 's)
 (require 'project)
 
 ;;; Customization
@@ -457,7 +459,7 @@ Filters out nodes whose status is in `verdict--hidden-statuses'."
 
 (defun verdict--write-output-buffer (label output)
   "Erase *verdict-output* and write LABEL header followed by OUTPUT."
-  (unless (eq major-mode 'verdict-output-mode)
+  (unless (derived-mode-p 'verdict-output-mode)
     (verdict-output-mode))
   (let (buffer-read-only)
     (erase-buffer)
@@ -555,6 +557,19 @@ EVENT is the mouse event."
     (when pos
       (goto-char pos)
       (verdict--rerun-at-node))))
+
+(defvar verdict-results-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map [tab]      #'verdict--toggle-or-show-output)
+    (define-key map [?\t]      #'verdict--toggle-or-show-output)
+    (define-key map [mouse-1]  #'verdict--single-click-action)
+    (define-key map (kbd "r")  #'verdict--rerun-at-node)
+    (define-key map (kbd "R")  #'verdict-run-last)
+    (define-key map (kbd "!")  #'verdict-rerun-failed)
+    (define-key map (kbd "k")  #'verdict-kill)
+    map)
+  "Keymap for the verdict results buffer.
+Applied on top of the treemacs keymap.")
 
 (defun verdict--rerun-link (item)
   "Return a propertized rerun link string for ITEM, or nil for output nodes."
@@ -665,11 +680,11 @@ Must be bound to a mouse click, or EVENT will not be supplied."
   (setq verdict-model (verdict--build-tree verdict--root-ids))
 
   ;; Avoid accidental shadowing of treemacs-initialize by the deprecated treemacs-extensions
-  (when (s-contains? "treemacs-extensions" (symbol-file 'treemacs-initialize 'defun))
+  (when (string-search "treemacs-extensions" (symbol-file 'treemacs-initialize 'defun))
     (load-library "treemacs-treelib"))
 
   (with-current-buffer (get-buffer-create verdict-buffer-name)
-    (if (eq major-mode 'treemacs-mode)
+    (if (derived-mode-p 'treemacs-mode)
         (let ((saved-point (point))
               (saved-windows (mapcar (lambda (w) (cons w (window-start w)))
                                      (get-buffer-window-list (current-buffer) nil t))))
@@ -692,15 +707,8 @@ Must be bound to a mouse click, or EVENT will not be supplied."
        (verdict--render-command-header)
        (verdict--render-filter-header))
       (setq-local mode-line-format verdict--mode-line-format)
-      (let ((map (make-sparse-keymap)))
+      (let ((map (copy-keymap verdict-results-map)))
         (set-keymap-parent map (current-local-map))
-        (define-key map [tab]      #'verdict--toggle-or-show-output)
-        (define-key map [?\t]      #'verdict--toggle-or-show-output)
-        (define-key map [mouse-1]  #'verdict--single-click-action)
-        (define-key map (kbd "r")  #'verdict--rerun-at-node)
-        (define-key map (kbd "R")  #'verdict-run-last)
-        (define-key map (kbd "!")  #'verdict-rerun-failed)
-        (define-key map (kbd "k")  #'verdict-kill)
         (use-local-map map)))
     (current-buffer)))
 

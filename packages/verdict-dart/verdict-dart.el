@@ -1,7 +1,7 @@
 ;;; verdict-dart.el --- Dart runner for verdict -*- lexical-binding: t -*-
 
-;; Author: Thomas Järvstrand
-;; Maintainer: Thomas Järvstrand
+;; Author: Thomas Järvstrand <https://github.com/tjarvstrand>
+;; Maintainer: Thomas Järvstrand <https://github.com/tjarvstrand>
 ;; Version: 0.1.1
 ;; URL: https://github.com/tjarvstrand/verdict.el
 ;; Keywords: tools, languages
