@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.2] - 2026-04-13
 
+### Fixed
+
+ - Correct maintainer URL
+ - Remove dependency on s
+ - Required subr-x
+ - Declare treemacs use
+ - Use separate keymap for result buffer
+ - Check for derived major mode instead of major mode
+ - Fix buffer name when rerunning failed tests
+
 ## [0.1.1] - 2026-04-08
 
 ### Added
