@@ -14,6 +14,7 @@
         verdict--spinner-frame 0
         verdict--partial       ""
         verdict--proc          nil
+        verdict--kill-handle   nil
         verdict--proc-backend  nil
         verdict--last-backend  nil
         verdict--last-context  nil

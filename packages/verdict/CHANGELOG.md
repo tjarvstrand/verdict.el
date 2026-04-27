@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+ - Let custom launch functions return a kill-handle that can be used to stop the run
+
 ## [0.1.2] - 2026-04-13
 
 ### Fixed

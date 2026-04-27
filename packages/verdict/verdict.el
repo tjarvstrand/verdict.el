@@ -257,7 +257,13 @@ BACKEND-PLIST keys:
     SCOPE: :test-at-point, :group-at-point, :file,
     :module, :project, or (:tests . FILE-TESTS).
   :command-fn — (context debug) -> plist with
-    :command, :directory, :name, :header.
+    :command   — argv list (subprocess) or function (custom launch).
+                 When a function, it is called with no arguments and
+                 should return a kill handle: a zero-arg function that
+                 stops the run, or nil if no kill mechanism is available.
+    :directory — working directory.
+    :name      — display name.
+    :header    — buffer header string.
   :line-handler — (line) called per output line.")
 
 (defun verdict--match-predicate (predicate)
@@ -289,6 +295,12 @@ See `verdict--backends' for the supported predicate forms."
 
 (defvar verdict--proc nil
   "Active test process.")
+
+(defvar verdict--kill-handle nil
+  "Function of zero arguments that stops the active test run, or nil.
+For subprocess runs, set by `verdict--launch' to a process kill.
+For runs whose `:command' is a function, set to that function's
+return value.")
 
 (defvar verdict--partial ""
   "Partial line buffer for streaming process output.")
@@ -860,7 +872,8 @@ Must be bound to a mouse click, or EVENT will not be supplied."
 (defun verdict-stop ()
   "Mark all running nodes as stopped and render."
   (verdict--spinner-stop)
-  (setq verdict--run-state 'finished)
+  (setq verdict--run-state   'finished
+        verdict--kill-handle nil)
   (when verdict--render-timer
     (cancel-timer verdict--render-timer)
     (setq verdict--render-timer nil))
@@ -952,8 +965,9 @@ EVENT must have a :type field with a keyword value."
 (defun verdict--launch (backend context debug)
   "Launch a test process for CONTEXT with DEBUG using BACKEND."
   (setq verdict--proc-backend backend)
-  (when (process-live-p verdict--proc)
-    (kill-process verdict--proc))
+  (when verdict--kill-handle
+    (funcall verdict--kill-handle)
+    (setq verdict--kill-handle nil))
   (setq verdict--partial "")
   (let* ((spec (funcall (plist-get backend :command-fn) context debug))
          (cmd  (plist-get spec :command))
@@ -962,7 +976,7 @@ EVENT must have a :type field with a keyword value."
     (setq verdict--run-header (plist-get spec :header))
     (verdict-start)
     (if (functionp cmd)
-        (funcall cmd)
+        (setq verdict--kill-handle (funcall cmd))
       (setq verdict--proc
             (make-process
              :name            "verdict"
@@ -971,6 +985,10 @@ EVENT must have a :type field with a keyword value."
              :filter          #'verdict--filter
              :sentinel        #'verdict--sentinel
              :noquery         t))
+      (setq verdict--kill-handle
+            (lambda ()
+              (when (process-live-p verdict--proc)
+                (kill-process verdict--proc))))
       (message "verdict: running %s" (string-join cmd " "))
       (message "verdict: in %s" dir))))
 
@@ -985,10 +1003,12 @@ DEBUG is passed to the backend's command function."
 
 ;;;###autoload
 (defun verdict-kill ()
-  "Kill the running test process."
+  "Kill the running test process or debug session."
   (interactive)
-  (if (process-live-p verdict--proc)
-      (kill-process verdict--proc)
+  (if verdict--kill-handle
+      (let ((handle verdict--kill-handle))
+        (setq verdict--kill-handle nil)
+        (funcall handle))
     (user-error "No running verdict process")))
 
 ;;; Public Run Commands

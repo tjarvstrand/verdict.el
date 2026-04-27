@@ -53,7 +53,10 @@ CONTEXT is a plist; see `verdict-dart-debug-fn'."
   "Function to launch a dart test debug session.
 Called with a single argument: a plist with keys
 :project, :files, :names, :name, :runner (\"dart\" or \"flutter\").
-The function should start a debug session (e.g. via dape or dap-mode).
+The function should start a debug session (e.g. via dape or dap-mode)
+and return a kill handle: a zero-argument function that terminates
+the session, or nil if no kill mechanism is available.  The handle
+is invoked by `verdict-kill'.
 The default uses dape if available, otherwise signals an error."
   :type 'function
   :group 'verdict-dart)
@@ -477,7 +480,7 @@ Checks the project's pubspec.yaml for Flutter dependencies."
 
 (defun verdict-dart--command-fn (context debug)
   "Build dart/flutter test command from CONTEXT and DEBUG flag.
-Returns a plist with :command :directory :name :header."
+Returns a plist suitable for `verdict-register-backend'."
   (let* ((files  (plist-get context :files))
          (names  (plist-get context :names))
          (dir    (plist-get context :project))
@@ -506,10 +509,14 @@ Returns a plist with :command :directory :name :header."
 ;;; Dape Integration
 
 (declare-function dape "dape" (config))
+(declare-function dape-quit "dape" (&optional conn))
+(declare-function dape--live-connection "dape" (type &optional nowarn require-selected))
 
 (defun verdict-dart--dape-debug (context)
   "Launch a dape debug session for a dart/flutter test.
-CONTEXT is a plist with :project, :file, :names, :name, :runner."
+CONTEXT is a plist with :project, :file, :names, :name, :runner.
+Returns a kill handle that terminates the dape session
+(see `verdict-dart-debug-fn')."
   (let* ((runner    (plist-get context :runner))
          (files     (plist-get context :files))
          (_         (when (> (length files) 1)
@@ -526,7 +533,10 @@ CONTEXT is a plist with :project, :file, :names, :name, :runner."
                       ,@(when names
                           (list :args (vector "--plain-name" (car names))))
                       ,@(when flutter-p '(:toolArgs ["-d" "all"])))))
-    (dape config)))
+    (dape config)
+    (lambda ()
+      (when-let* ((conn (dape--live-connection 'parent t)))
+        (dape-quit conn)))))
 
 (cl-defmethod dape-handle-event
   (_conn (_event (eql dart.testNotification)) body)
