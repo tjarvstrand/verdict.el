@@ -7,7 +7,8 @@
 Dart and Flutter test backend for [verdict](../../packages/verdict/).
 
 Runs `dart test` or `flutter test` and displays results in verdict's treemacs
-UI. Supports test discovery via tree-sitter and debug sessions via dape.
+UI. Supports test discovery via tree-sitter (with a regex fallback when the
+grammar is unavailable) and debug sessions via dape.
 
 ## Table of Contents
 
@@ -25,7 +26,7 @@ UI. Supports test discovery via tree-sitter and debug sessions via dape.
 
 - Emacs 29.1+
 - Dart SDK or Flutter SDK on `PATH`
-- A dart [tree-sitter](https://github.com/tree-sitter/tree-sitter) grammar, e.g., [tree-sitter-dart](https://github.com/UserNobody14/tree-sitter-dart)
+- A dart [tree-sitter](https://github.com/tree-sitter/tree-sitter) grammar (recommended), e.g., [tree-sitter-dart](https://github.com/UserNobody14/tree-sitter-dart). Without it, "test at point" / "group at point" use a regex fallback that handles the common cases.
 
 #### Grammar
 

@@ -23,9 +23,9 @@
 
 ;;; Commentary:
 
-;; Dart and Flutter test backend for verdict.  Provides test discovery
-;; via tree-sitter, JSON protocol parsing, and optional debug support
-;; (by default using dape).
+;; Dart and Flutter test backend for verdict.  Provides test discovery,
+;; optionally via tree-sitter (recommended), JSON protocol parsing, and
+;; optional debug support (by default using dape).
 
 ;;; Code:
 
@@ -60,6 +60,9 @@ is invoked by `verdict-kill'.
 The default uses dape if available, otherwise signals an error."
   :type 'function
   :group 'verdict-dart)
+
+(defcustom verdict-dart-inhibit-treesit nil
+  "If non-nil, use regexp-based parsing even if treesit is available and a Dart grammar installed.")
 
 (defvar verdict-dart-flutter-packages '("flutter_test")
   "List of package names whose import indicates a Flutter test file.
@@ -97,13 +100,13 @@ used instead of `dart test'.")
   '("group" "test" "testWidgets")
   "Dart test function names recognized by verdict.")
 
-(defun verdict-dart--ensure-parser ()
+(defun verdict-dart--ensure-parser-treesit ()
   "Create a dart treesit parser for the current buffer if needed."
   (unless (treesit-ready-p 'dart t)
     (error "Dart treesit grammar not available"))
   (treesit-parser-create 'dart))
 
-(defun verdict-dart--call-info-from-node (node)
+(defun verdict-dart--call-info-from-node-treesit (node)
   "Extract call info from NODE if it is a recognized test/group call.
 Returns (:kind KIND :name NAME :line LINE) or nil."
   (when (and node (string= (treesit-node-type node) "expression_statement"))
@@ -135,17 +138,113 @@ Returns (:kind KIND :name NAME :line LINE) or nil."
                           :name name
                           :line (line-number-at-pos line))))))))))))
 
-(defun verdict-dart--enclosing-calls ()
-  "Return list of call-infos from outermost to innermost enclosing test/group call."
-  (verdict-dart--ensure-parser)
+(defun verdict-dart--enclosing-calls-treesit ()
+  "Return list of enclosing test/group call infos via tree-sitter.
+The list is ordered outermost first."
+  (verdict-dart--ensure-parser-treesit)
   (let* ((start-node (treesit-node-at (point) 'dart))
          (node       start-node)
          (results    nil))
     (while node
-      (when-let* ((info (verdict-dart--call-info-from-node node)))
+      (when-let* ((info (verdict-dart--call-info-from-node-treesit node)))
         (push info results))
       (setq node (treesit-node-parent node)))
     results))
+
+(defconst verdict-dart--call-regexp
+  (concat "\\_<\\("
+          (mapconcat #'regexp-quote verdict-dart--test-call-kinds "\\|")
+          "\\)\\_>[[:space:]]*(")
+  "Regexp matching the start of a recognized test/group call.")
+
+(defconst verdict-dart--regex-syntax-table
+  (let ((tbl (make-syntax-table)))
+    (modify-syntax-entry ?\" "\""    tbl)
+    (modify-syntax-entry ?\' "\""    tbl)
+    (modify-syntax-entry ?\\ "\\"    tbl)
+    (modify-syntax-entry ?\( "()"    tbl)
+    (modify-syntax-entry ?\) ")("    tbl)
+    (modify-syntax-entry ?\{ "(}"    tbl)
+    (modify-syntax-entry ?\} "){"    tbl)
+    (modify-syntax-entry ?\[ "(]"    tbl)
+    (modify-syntax-entry ?\] ")["    tbl)
+    (modify-syntax-entry ?/  ". 124b" tbl)
+    (modify-syntax-entry ?*  ". 23"   tbl)
+    (modify-syntax-entry ?\n "> b"    tbl)
+    tbl)
+  "Syntax table used by `verdict-dart--enclosing-calls-regex'.
+Treats both `'` and `\"` as string fences, marks C-style line and
+block comments, and pairs all bracket/brace types — so the parser
+works regardless of the buffer's major mode.")
+
+(defun verdict-dart--first-string-arg-regex (open-paren)
+  "Return name of the first argument if it is a string literal.
+OPEN-PAREN is the position of the opening `('.  Returns nil if the
+first argument is not a literal string.  Must be called inside
+`verdict-dart--regex-syntax-table'."
+  (save-excursion
+    (goto-char (1+ open-paren))
+    (skip-syntax-forward " ")
+    (let ((start (point)))
+      (when (eq (char-after) ?r)
+        (forward-char 1))
+      (let ((q (char-after)))
+        (when (memq q '(?\" ?\'))
+          (let ((end
+                 (if (and (eq (char-after (1+ (point))) q)
+                          (eq (char-after (+ (point) 2)) q))
+                     ;; Triple-quoted: scan for closing triple.  Syntax
+                     ;; tables can't represent triple delimiters, so do
+                     ;; this by hand.
+                     (save-excursion
+                       (forward-char 3)
+                       (when (search-forward (make-string 3 q) nil t)
+                         (point)))
+                   ;; Single-quoted: forward-sexp uses our syntax table.
+                   (condition-case nil
+                       (save-excursion (forward-sexp 1) (point))
+                     (error nil)))))
+            (when end
+              (verdict-dart--string-content
+               (buffer-substring-no-properties start end)))))))))
+
+(defun verdict-dart--enclosing-calls-regex ()
+  "Return list of enclosing test/group call infos via regex parsing.
+The list is ordered outermost first.  Same data shape as the
+tree-sitter implementation; intended as a fallback when the Dart
+grammar is not available."
+  (let ((target (point))
+        results)
+    (with-syntax-table verdict-dart--regex-syntax-table
+      (save-excursion
+        (goto-char (point-min))
+        (while (re-search-forward verdict-dart--call-regexp target t)
+          (let* ((kind-start (match-beginning 1))
+                 (kind       (match-string-no-properties 1))
+                 (paren-pos  (1- (match-end 0)))
+                 (ppss       (save-excursion
+                               (parse-partial-sexp (point-min) kind-start))))
+            (unless (or (nth 3 ppss) (nth 4 ppss))
+              (let ((call-end (save-excursion
+                                (goto-char paren-pos)
+                                (condition-case nil
+                                    (progn (forward-sexp 1) (point))
+                                  (error nil)))))
+                (when (and call-end (<= kind-start target) (<= target call-end))
+                  (when-let* ((name (verdict-dart--first-string-arg-regex paren-pos)))
+                    (push (list :kind kind
+                                :name name
+                                :line (line-number-at-pos kind-start))
+                          results)))))))))
+    (nreverse results)))
+
+(defun verdict-dart--enclosing-calls ()
+  "Return list of enclosing test/group call infos, outermost first.
+Uses tree-sitter when the Dart grammar is available; falls back to
+regex parsing otherwise."
+  (if (and (treesit-ready-p 'dart t) (not verdict-dart-inhibit-treesit))
+      (verdict-dart--enclosing-calls-treesit)
+    (verdict-dart--enclosing-calls-regex)))
 
 ;;; Test-at-Point
 

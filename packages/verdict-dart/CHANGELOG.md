@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+ - Regex-based fallback for `:test-at-point` and `:group-at-point` when the Dart tree-sitter grammar is not available.
+
 ## [0.1.2] - 2026-04-13
 
 ## [0.1.1] - 2026-04-08

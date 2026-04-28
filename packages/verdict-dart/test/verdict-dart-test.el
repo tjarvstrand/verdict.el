@@ -128,6 +128,131 @@ and return the resulting verdict events in arrival order."
                        (equal (plist-get ev :id) id)))
                 events)))
 
+;;; verdict-dart--enclosing-calls
+
+(defmacro verdict-dart-test--with-source (source &rest body)
+  "Evaluate BODY in a temp buffer containing SOURCE.
+A `[POINT]' marker in SOURCE is removed and `point' is left at its
+location."
+  (declare (indent 1) (debug t))
+  `(with-temp-buffer
+     (insert ,source)
+     (goto-char (point-min))
+     (when (search-forward "[POINT]" nil t)
+       (replace-match "" t t))
+     ,@body))
+
+(describe "verdict-dart--enclosing-calls"
+  (describe "regex fallback"
+    (it "returns nil when point is outside any test/group"
+      (verdict-dart-test--with-source
+          "void main() {[POINT]\n  test('x', () {});\n}\n"
+        (expect (verdict-dart--enclosing-calls-regex) :to-equal nil)))
+
+    (it "returns the enclosing top-level test"
+      (verdict-dart-test--with-source
+          "void main() {\n  test('a top-level test', () {[POINT]});\n}\n"
+        (expect (verdict-dart--enclosing-calls-regex)
+                :to-equal '((:kind "test" :name "a top-level test" :line 2)))))
+
+    (it "returns nested groups outermost first"
+      (verdict-dart-test--with-source
+          (concat "void main() {\n"
+                  "  group('outer', () {\n"
+                  "    group('inner', () {\n"
+                  "      test('leaf', () {[POINT]});\n"
+                  "    });\n"
+                  "  });\n"
+                  "}\n")
+        (expect (verdict-dart--enclosing-calls-regex)
+                :to-equal '((:kind "group" :name "outer" :line 2)
+                            (:kind "group" :name "inner" :line 3)
+                            (:kind "test"  :name "leaf"  :line 4)))))
+
+    (it "handles single-quoted, double-quoted, and raw strings"
+      (verdict-dart-test--with-source
+          (concat "void main() {\n"
+                  "  group(\"dq\", () {\n"
+                  "    group('sq', () {\n"
+                  "      test(r'raw', () {[POINT]});\n"
+                  "    });\n"
+                  "  });\n"
+                  "}\n")
+        (expect (verdict-dart--enclosing-calls-regex)
+                :to-equal '((:kind "group" :name "dq"  :line 2)
+                            (:kind "group" :name "sq"  :line 3)
+                            (:kind "test"  :name "raw" :line 4)))))
+
+    (it "handles triple-quoted strings (single, double, raw, multi-line)"
+      (verdict-dart-test--with-source
+          (concat "void main() {\n"
+                  "  group('''sq triple''', () {\n"
+                  "    group(\"\"\"dq triple\"\"\", () {\n"
+                  "      group(r'''raw triple''', () {\n"
+                  "        test('''first\nsecond''', () {[POINT]});\n"
+                  "      });\n"
+                  "    });\n"
+                  "  });\n"
+                  "}\n")
+        (expect (verdict-dart--enclosing-calls-regex)
+                :to-equal '((:kind "group" :name "sq triple"     :line 2)
+                            (:kind "group" :name "dq triple"     :line 3)
+                            (:kind "group" :name "raw triple"    :line 4)
+                            (:kind "test"  :name "first\nsecond" :line 5)))))
+
+    (it "ignores test( inside string literals"
+      (verdict-dart-test--with-source
+          (concat "void main() {\n"
+                  "  var s = \"test('decoy', () {})\";\n"
+                  "  test('real', () {[POINT]});\n"
+                  "}\n")
+        (expect (verdict-dart--enclosing-calls-regex)
+                :to-equal '((:kind "test" :name "real" :line 3)))))
+
+    (it "ignores test( inside line comments"
+      (verdict-dart-test--with-source
+          (concat "void main() {\n"
+                  "  // test('decoy', () {});\n"
+                  "  test('real', () {[POINT]});\n"
+                  "}\n")
+        (expect (verdict-dart--enclosing-calls-regex)
+                :to-equal '((:kind "test" :name "real" :line 3)))))
+
+    (it "ignores test( inside block comments"
+      (verdict-dart-test--with-source
+          (concat "void main() {\n"
+                  "  /* test('decoy', () {}); */\n"
+                  "  test('real', () {[POINT]});\n"
+                  "}\n")
+        (expect (verdict-dart--enclosing-calls-regex)
+                :to-equal '((:kind "test" :name "real" :line 3)))))
+
+    (it "skips calls whose first argument is not a string literal"
+      (verdict-dart-test--with-source
+          (concat "void main() {\n"
+                  "  group(name, () {\n"
+                  "    test('real', () {[POINT]});\n"
+                  "  });\n"
+                  "}\n")
+        (expect (verdict-dart--enclosing-calls-regex)
+                :to-equal '((:kind "test" :name "real" :line 3))))))
+
+  (describe "tree-sitter implementation"
+    (before-all
+      (unless (treesit-ready-p 'dart t)
+        (signal 'buttercup-pending "Dart tree-sitter grammar not available")))
+
+    (it "matches the regex fallback for nested groups"
+      (verdict-dart-test--with-source
+          (concat "void main() {\n"
+                  "  group('outer', () {\n"
+                  "    test('inner', () {[POINT]});\n"
+                  "  });\n"
+                  "}\n")
+        (when (fboundp 'dart-mode) (dart-mode))
+        (expect (verdict-dart--enclosing-calls-treesit)
+                :to-equal (verdict-dart--enclosing-calls-regex))))))
+
 ;;; dart_test.dart
 
 (defvar verdict-dart-test--main-events nil
