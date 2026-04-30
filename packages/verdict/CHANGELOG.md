@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
  - Skip the UI re-render on `:log` events that don't change the tree (i.e. all leaf logs and all but the first log to a group), substantially reducing CPU usage during runs that produce a lot of output
  - Animate running-test spinners by patching their glyphs in place instead of re-rendering the entire tree on every spinner tick
+ - Skip the hidden-status filter pass in `verdict--build-tree` when no statuses are hidden
 
 ## [0.1.2] - 2026-04-13
 

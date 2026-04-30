@@ -405,11 +405,13 @@ Filters out nodes whose status is in `verdict--hidden-statuses'."
         (cond
           (child-ids
            (let* ((child-list (verdict--build-tree child-ids))
-                  (child-list (seq-remove
-                               (lambda (c)
-                                 (and (not (plist-get c :children))
-                                      (memq (plist-get c :status) verdict--hidden-statuses)))
-                               child-list))
+                  (child-list (if verdict--hidden-statuses
+                                  (seq-remove
+                                   (lambda (c)
+                                     (and (not (plist-get c :children))
+                                          (memq (plist-get c :status) verdict--hidden-statuses)))
+                                   child-list)
+                                child-list))
                   (init-failed (memq (plist-get node :status) '(error failed)))
                   (child-list (if (and output (or init-failed child-list))
                                   (cons (verdict--output-node id (plist-get node :label) output) child-list)
