@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
  - Skip the UI re-render on `:log` events that don't change the tree (i.e. all leaf logs and all but the first log to a group), substantially reducing CPU usage during runs that produce a lot of output
+ - Animate running-test spinners by patching their glyphs in place instead of re-rendering the entire tree on every spinner tick
 
 ## [0.1.2] - 2026-04-13
 

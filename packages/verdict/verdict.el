@@ -342,7 +342,8 @@ return value.")
 
 (defun verdict--leaf-icon (status)
   "Return 2-char propertized icon string for leaf node with STATUS."
-  (let* ((icon (pcase status
+  (let* ((spinner (eq status 'running))
+         (icon (pcase status
                  ('running (aref (verdict--spinner-frames) verdict--spinner-frame))
                  ('passed  verdict-icon-passed)
                  ('failed  verdict-icon-failed)
@@ -350,20 +351,25 @@ return value.")
                  ('skipped verdict-icon-skipped)
                  ('stopped verdict-icon-stopped)
                  (_        " "))))
-    (verdict--render-icon status icon)))
+    (verdict--render-icon status icon spinner)))
 
 (defun verdict--group-icon (status open)
   "Return propertized group icon string for STATUS; OPEN controls arrow direction."
-  (verdict--render-icon status (if open verdict-icon-open verdict-icon-closed)))
+  (verdict--render-icon status (if open verdict-icon-open verdict-icon-closed) nil))
 
-(defun verdict--render-icon (status icon-char)
-  "Return propertized icon string for STATUS using ICON-CHAR."
+(defun verdict--render-icon (status icon-char &optional spinner)
+  "Return propertized icon string for STATUS using ICON-CHAR.
+When SPINNER is non-nil, tag ICON-CHAR with `verdict-spinner' so
+`verdict--spinner-tick' can patch it in place without re-rendering."
   (let* ((face (verdict--status-face status))
          (icon-face (if verdict-icon-font
                         `(:inherit ,face :family ,verdict-icon-font)
-                      `(:inherit ,face))))
+                      `(:inherit ,face)))
+         (icon-props (append
+                      (when spinner '(verdict-spinner t))
+                      `(face ,icon-face display (height ,verdict-icon-height)))))
     (concat
-     (propertize icon-char 'face icon-face 'display `(height ,verdict-icon-height))
+     (apply #'propertize icon-char icon-props)
      (propertize " "  'face `(:inherit ,face)))))
 
 (defun verdict--render-message (severity message)
@@ -727,11 +733,31 @@ Must be bound to a mouse click, or EVENT will not be supplied."
 ;;; Public API
 
 (defun verdict--spinner-tick ()
-  "Advance spinner frame and schedule a render."
+  "Advance spinner frame and patch in-tree spinner glyphs in place.
+Avoids a full tree rebuild by walking text properties tagged
+`verdict-spinner' and replacing each character with the new frame."
   (setq verdict--spinner-frame
         (mod (1+ verdict--spinner-frame) (length (verdict--spinner-frames))))
   (verdict--update-mode-line)
-  (verdict--schedule-render))
+  (when-let* ((buf (get-buffer verdict-buffer-name)))
+    (with-current-buffer buf
+      (when (derived-mode-p 'treemacs-mode)
+        (let ((new-frame (aref (verdict--spinner-frames) verdict--spinner-frame)))
+          (treemacs-with-writable-buffer
+           (save-excursion
+             (goto-char (point-min))
+             (let (m)
+               (while (setq m (text-property-search-forward 'verdict-spinner t t))
+                 (let* ((start (prop-match-beginning m))
+                        (end   (prop-match-end m))
+                        (face  (get-text-property start 'face))
+                        (disp  (get-text-property start 'display)))
+                   (delete-region start end)
+                   (goto-char start)
+                   (insert (propertize new-frame
+                                       'verdict-spinner t
+                                       'face face
+                                       'display disp))))))))))))
 
 (defun verdict--spinner-start ()
   "Start the spinner timer."
