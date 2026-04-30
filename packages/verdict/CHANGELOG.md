@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
  - Let custom launch functions return a kill-handle that can be used to stop the run
 
+### Changed
+
+ - Skip the UI re-render on `:log` events that don't change the tree (i.e. all leaf logs and all but the first log to a group), substantially reducing CPU usage during runs that produce a lot of output
+
 ## [0.1.2] - 2026-04-13
 
 ### Fixed

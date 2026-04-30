@@ -887,7 +887,10 @@ Must be bound to a mouse click, or EVENT will not be supplied."
 
 (defun verdict-event (event)
   "Process an EVENT plist and update internal state, then schedule a render.
-EVENT must have a :type field with a keyword value."
+EVENT must have a :type field with a keyword value.
+A render is scheduled only when the event can change the visible
+tree.  In particular, `:log' does not schedule a render unless it
+adds a synthetic <init> output node (first log to a group node)."
   (when verdict-log-events
     (message "verdict: Received event %s" event))
   (pcase (plist-get event :type)
@@ -905,7 +908,8 @@ EVENT must have a :type field with a keyword value."
        (puthash id node verdict--nodes)
        (if (gethash parent-id verdict--nodes)
            (verdict--add-child parent-id id)
-         (setq verdict--root-ids (append verdict--root-ids (list id))))))
+         (setq verdict--root-ids (append verdict--root-ids (list id)))))
+     (verdict--schedule-render))
 
     (:test-start
      (let* ((id        (plist-get event :id))
@@ -918,7 +922,8 @@ EVENT must have a :type field with a keyword value."
                              :file   (plist-get event :file)
                              :line   (plist-get event :line))))
        (puthash id node verdict--nodes)
-       (verdict--add-child parent-id id)))
+       (verdict--add-child parent-id id))
+     (verdict--schedule-render))
 
     (:log
      (let* ((id     (plist-get event :id))
@@ -927,18 +932,23 @@ EVENT must have a :type field with a keyword value."
        (when (and msg node)
          (let ((prev (plist-get node :output)))
            (plist-put node :output (if prev (concat prev "\n" msg) msg))
-           (verdict--append-output-buffer id prev msg)))))
+           (verdict--append-output-buffer id prev msg)
+           ;; Render only on the first log to a group node — that is
+           ;; the one transition that can newly add a synthetic <init>
+           ;; child to the tree.  Leaf logs and subsequent group logs
+           ;; never change the tree.
+           (when (and (null prev) (plist-member node :children))
+             (verdict--schedule-render))))))
 
     (:test-done
      (when-let* ((node (gethash (plist-get event :id) verdict--nodes)))
-       (plist-put node :status (plist-get event :result))))
+       (plist-put node :status (plist-get event :result)))
+     (verdict--schedule-render))
 
     (:done
      (setq verdict--run-state 'finished)
      (verdict--update-mode-line)
-     (message "verdict: test run complete")))
-
-  (verdict--schedule-render))
+     (message "verdict: test run complete"))))
 
 ;;; Generic Process Infrastructure
 
