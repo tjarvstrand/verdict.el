@@ -1,0 +1,12 @@
+[vars]
+main_file = "verdict-buttercup.el"
+extra_load_path_args = "-L {{ vars.repo_root }}/packages/verdict"
+
+[tasks.compile]
+extends = "elisp:compile"
+
+[tasks.lint]
+extends = "elisp:lint"
+
+[tasks.checkdoc]
+extends = "elisp:checkdoc"

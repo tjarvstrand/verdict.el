@@ -1,5 +1,34 @@
 ;;; verdict-buttercup.el --- Buttercup backend for verdict -*- lexical-binding: t -*-
 
+;; Author: Thomas Järvstrand <https://github.com/tjarvstrand>
+;; Maintainer: Thomas Järvstrand <https://github.com/tjarvstrand>
+;; Version: 0.1.0
+;; URL: https://github.com/tjarvstrand/verdict.el
+;; Keywords: tools, lisp
+;; Package-Requires: ((emacs "29.1") (verdict "0.1"))
+;; SPDX-License-Identifier: GPL-3.0-or-later
+
+;; This program is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+;;; Commentary:
+
+;; Buttercup test backend for verdict.  Parses the line-oriented output
+;; of `buttercup-run' / `buttercup-run-discover' into verdict events so
+;; that buttercup suites and specs render in the verdict treemacs UI.
+
+;;; Code:
+
 (require 'cl-lib)
 (require 'verdict)
 (require 'project)

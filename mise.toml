@@ -1,38 +1,23 @@
-[tasks.test]
-description = "Run all buttercup tests"
-depends = ["test:verdict", "test:verdict-dart"]
+experimental_monorepo_root = true
 
-[tasks."test:verdict"]
-description = "Run verdict core tests"
-depends = ["deps"]
-run = """
-emacs -batch \
-  --eval '(setq package-user-dir (expand-file-name ".packages" default-directory))' \
-  --eval '(package-initialize)' \
-  -L packages/verdict \
-  -L packages/verdict/test \
-  -l buttercup \
-  -l verdict-test \
-  -f buttercup-run
-"""
+[settings]
+experimental = true
 
-[tasks."test:verdict-dart"]
-description = "Run verdict-dart tests"
-depends = ["deps"]
-run = """
-emacs -batch \
-  --eval '(setq package-user-dir (expand-file-name ".packages" default-directory))' \
-  --eval '(package-initialize)' \
-  -L packages/verdict \
-  -L packages/verdict-dart \
-  -L packages/verdict-dart/test \
-  -l buttercup \
-  -l verdict-dart-test \
-  -f buttercup-run
-"""
+[monorepo]
+config_roots = ["packages/*"]
+
+[vars]
+# Cascades to child configs. Children must override `main_file`; `test_library`
+# is required only by elisp:test; `extra_load_path_args` is for sibling-package
+# -L flags. The empty defaults here also let `mise tasks --all` render at root
+# without a context error.
+repo_root = "{{config_root}}"
+main_file = ""
+test_library = ""
+extra_load_path_args = ""
 
 [tasks.deps]
-description = "Install test dependencies"
+description = "Install shared test dependencies into .packages/"
 run = """
 emacs -batch \
   --eval '(setq package-user-dir (expand-file-name ".packages" default-directory))' \
@@ -42,63 +27,63 @@ emacs -batch \
   --eval '(dolist (pkg (quote (buttercup treemacs dash s f yaml package-lint))) (unless (package-installed-p pkg) (package-install pkg)))'
 """
 
-[tasks.compile]
-description = "Byte-compile all package files"
-depends = ["deps"]
+# ---------------------------------------------------------------------------
+# Reusable task templates extended by per-package configs.
+# Required vars on the extending package: main_file (and test_library for test).
+# Optional: extra_load_path_args (for sibling-package -L flags).
+# Cwd is the extending task's config_root (the package directory).
+# ---------------------------------------------------------------------------
+
+[task_templates."elisp:compile"]
+description = "Byte-compile a package's main .el"
 run = """
 emacs -batch \
-  --eval '(setq package-user-dir (expand-file-name ".packages" default-directory))' \
+  --eval '(setq package-user-dir (expand-file-name ".packages" "{{ vars.repo_root }}"))' \
   --eval '(package-initialize)' \
-  -L packages/verdict \
-  -L packages/verdict-dart \
+  {{ vars.extra_load_path_args }} \
+  -L . \
   --eval '(setq byte-compile-error-on-warn t)' \
   -f batch-byte-compile \
-  packages/verdict/verdict.el packages/verdict-dart/verdict-dart.el
+  {{ vars.main_file }}
 """
 
-[tasks.lint]
-description = "Run package-lint on all package files"
-depends = ["lint:verdict", "lint:verdict-dart"]
-
-[tasks."lint:verdict"]
-description = "Run package-lint on verdict.el"
-depends = ["deps"]
+[task_templates."elisp:lint"]
+description = "Run lint check"
 run = """
 emacs -batch \
-  --eval '(setq package-user-dir (expand-file-name ".packages" default-directory))' \
+  --eval '(setq package-user-dir (expand-file-name ".packages" "{{ vars.repo_root }}"))' \
   --eval '(package-initialize)' \
+  {{ vars.extra_load_path_args }} \
   --eval '(require (quote package-lint))' \
-  --eval '(setq package-lint-main-file "packages/verdict/verdict.el")' \
-  --eval '(setq package-lint-batch-fail-on-warnings t)' \
-  -f package-lint-batch-and-exit \
-  packages/verdict/verdict.el
-"""
-
-[tasks."lint:verdict-dart"]
-description = "Run package-lint on verdict-dart.el"
-depends = ["deps"]
-run = """
-emacs -batch \
-  --eval '(setq package-user-dir (expand-file-name ".packages" default-directory))' \
-  --eval '(package-initialize)' \
-  --eval '(require (quote package-lint))' \
-  --eval '(setq package-lint-main-file "packages/verdict-dart/verdict-dart.el")' \
+  --eval '(setq package-lint-main-file "{{ vars.main_file }}")' \
   --eval '(setq package-lint-batch-fail-on-warnings t)' \
   --eval '(advice-add (quote package-lint--check-packages-installable) :around (lambda (fn deps) (funcall fn (seq-remove (lambda (d) (eq (car d) (quote verdict))) deps))))' \
   -f package-lint-batch-and-exit \
-  packages/verdict-dart/verdict-dart.el
+  {{ vars.main_file }}
 """
 
-[tasks.checkdoc]
-description = "Check documentation strings"
-depends = ["deps"]
+[task_templates."elisp:checkdoc"]
+description = "Run checkdoc"
 run = """
 emacs -batch \
-  --eval '(setq package-user-dir (expand-file-name ".packages" default-directory))' \
+  --eval '(setq package-user-dir (expand-file-name ".packages" "{{ vars.repo_root }}"))' \
   --eval '(package-initialize)' \
-  -L packages/verdict \
-  -L packages/verdict-dart \
+  {{ vars.extra_load_path_args }} \
+  -L . \
   --eval '(require (quote checkdoc))' \
-  --eval '(let ((warning-minimum-log-level :error)) (checkdoc-file "packages/verdict/verdict.el"))' \
-  --eval '(let ((warning-minimum-log-level :error)) (checkdoc-file "packages/verdict-dart/verdict-dart.el"))'
+  --eval '(let ((warning-minimum-log-level :error)) (checkdoc-file "{{ vars.main_file }}"))'
+"""
+
+[task_templates."elisp:test"]
+description = "Run tests"
+run = """
+emacs -batch \
+  --eval '(setq package-user-dir (expand-file-name ".packages" "{{ vars.repo_root }}"))' \
+  --eval '(package-initialize)' \
+  {{ vars.extra_load_path_args }} \
+  -L . \
+  -L test \
+  -l buttercup \
+  -l {{ vars.test_library }} \
+  -f buttercup-run
 """

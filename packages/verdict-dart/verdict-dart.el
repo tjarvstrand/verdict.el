@@ -62,7 +62,10 @@ The default uses dape if available, otherwise signals an error."
   :group 'verdict-dart)
 
 (defcustom verdict-dart-inhibit-treesit nil
-  "If non-nil, use regexp-based parsing even if treesit is available and a Dart grammar installed.")
+  "If non-nil, use regexp-based parsing even when treesit is available.
+This is mainly useful for testing the regexp fallback path."
+  :type 'boolean
+  :group 'verdict-dart)
 
 (defvar verdict-dart-flutter-packages '("flutter_test")
   "List of package names whose import indicates a Flutter test file.

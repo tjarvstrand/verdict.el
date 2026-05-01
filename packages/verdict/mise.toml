@@ -1,0 +1,15 @@
+[vars]
+main_file = "verdict.el"
+test_library = "verdict-test"
+
+[tasks.compile]
+extends = "elisp:compile"
+
+[tasks.lint]
+extends = "elisp:lint"
+
+[tasks.checkdoc]
+extends = "elisp:checkdoc"
+
+[tasks.test]
+extends = "elisp:test"
