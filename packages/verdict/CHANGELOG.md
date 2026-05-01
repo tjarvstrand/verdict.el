@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - Animate running-test spinners by patching their glyphs in place instead of re-rendering the entire tree on every spinner tick.
  - Skip the hidden-status filter pass in `verdict--build-tree` when no statuses are hidden.
  - Accumulate per-node test output as a list of messages instead of repeatedly concatenating.
+ - Cache leaf-status counts incrementally to avoid re-walking all nodes on each read.
 
 ## [0.1.2] - 2026-04-13
 

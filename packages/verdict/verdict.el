@@ -237,6 +237,9 @@ nil   — prompt before each run, then offer to remember the answer."
 (defvar verdict--hidden-statuses nil
   "List of status symbols whose tests are currently hidden in the tree.")
 
+(defvar verdict--status-counts nil
+  "alist of (STATUS . COUNT) for test results")
+
 (defvar verdict-buffer-name "*verdict*"
   "Name of the verdict results buffer.")
 
@@ -326,6 +329,11 @@ return value.")
 (defun verdict--worst-status (statuses)
   "Return the highest-severity status from STATUSES list."
   (-max-by (-on #'> (lambda (status) (alist-get status verdict--status-severity 0))) statuses))
+
+(defun verdict--bump-status-count (status delta)
+  "Add DELTA to the count for STATUS in `verdict--status-counts'."
+  (when status
+    (cl-callf + (alist-get status verdict--status-counts 0) delta)))
 
 ;;; Icon/Face Helpers
 
@@ -654,33 +662,33 @@ Must be bound to a mouse click, or EVENT will not be supplied."
       (insert sep "\n"))))
 
 (defun verdict--render-filter-header ()
-  "Insert status filter buttons at the top of the verdict buffer."
+  "Insert status filter buttons at the top of the verdict buffer.
+Skips statuses whose count is zero, and omits the line entirely
+when every count is zero."
   (require 'cus-edit)
   (let* ((counts (verdict--count-by-status))
-         (order '(running passed failed error skipped stopped)))
+         (any-nonzero (cl-some (lambda (e) (> (cdr e) 0)) counts)))
     (insert "\n")
-    (when counts
+    (when any-nonzero
       (insert "Show: ")
-      (dolist (status order)
-        (when-let* ((count (cdr (assq status counts))))
+      (pcase-dolist (`(,status . ,count) counts)
+        (when (> count 0)
           (let* ((hidden (memq status verdict--hidden-statuses))
                  (check  (if hidden "☐ " "☑ "))
                  (face   (if hidden 'shadow (verdict--status-face status)))
                  (label  (format "%s (%d)" status count))
                  (action (lambda (_btn) (verdict--toggle-status-filter status)))
                  (help   (format "Toggle %s tests" status)))
-            (insert-text-button
-             check
-             'face 'verdict-button-face
-             'action action
-             'follow-link t
-             'help-echo help)
-            (insert-text-button
-             label
-             'face `(:inherit (,face verdict-button-face))
-             'action action
-             'follow-link t
-             'help-echo help)
+            (insert-text-button check
+                                'face 'verdict-button-face
+                                'action action
+                                'follow-link t
+                                'help-echo help)
+            (insert-text-button label
+                                'face `(:inherit (,face verdict-button-face))
+                                'action action
+                                'follow-link t
+                                'help-echo help)
             (insert "  ")))))
     (insert "\n\n")))
 
@@ -785,17 +793,10 @@ Avoids a full tree rebuild by walking text properties tagged
     (intern (concat (string-remove-suffix "-face" (symbol-name face)) suffix))))
 
 (defun verdict--count-by-status ()
-  "Return an alist of (status . count) for all leaf nodes."
-  (let ((counts nil))
-    (maphash (lambda (_id node)
-               (unless (plist-member node :children)
-                 (let* ((status (plist-get node :status))
-                        (entry  (assq status counts)))
-                   (if entry
-                       (setcdr entry (1+ (cdr entry)))
-                     (push (cons status 1) counts)))))
-             verdict--nodes)
-    counts))
+  "Return an alist of (status . count) for all leaf nodes.
+Reads from `verdict--status-counts', which is kept in sync by
+`verdict-event' and `verdict-stop'."
+  (copy-alist verdict--status-counts))
 
 (defun verdict--mode-line-string ()
   "Return the mode line string for the verdict buffer."
@@ -866,7 +867,8 @@ Avoids a full tree rebuild by walking text properties tagged
   (setq verdict-model nil)
   (setq verdict--output-node-id nil)
   (setq verdict--run-state nil)
-  (setq verdict--hidden-statuses nil))
+  (setq verdict--hidden-statuses nil)
+  (setq verdict--status-counts nil))
 
 (defun verdict--maybe-save-buffer ()
   "Save the current buffer before a run, respecting `verdict-save-before-run'."
@@ -908,7 +910,10 @@ Avoids a full tree rebuild by walking text properties tagged
   (maphash
    (lambda (id node)
      (when (eq (plist-get node :status) 'running)
-       (puthash id (plist-put node :status 'stopped) verdict--nodes)))
+       (puthash id (plist-put node :status 'stopped) verdict--nodes)
+       (unless (plist-member node :children)
+         (verdict--bump-status-count 'running -1)
+         (verdict--bump-status-count 'stopped 1))))
    verdict--nodes)
   (verdict--render)
   (verdict--update-mode-line))
@@ -950,7 +955,8 @@ adds a synthetic <init> output node (first log to a group node)."
                              :file   (plist-get event :file)
                              :line   (plist-get event :line))))
        (puthash id node verdict--nodes)
-       (verdict--add-child parent-id id))
+       (verdict--add-child parent-id id)
+       (verdict--bump-status-count 'running 1))
      (verdict--schedule-render))
 
     (:log
@@ -970,7 +976,12 @@ adds a synthetic <init> output node (first log to a group node)."
 
     (:test-done
      (when-let* ((node (gethash (plist-get event :id) verdict--nodes)))
-       (plist-put node :status (plist-get event :result)))
+       (let ((prev (plist-get node :status))
+             (new  (plist-get event :result)))
+         (plist-put node :status new)
+         (unless (plist-member node :children)
+           (verdict--bump-status-count prev -1)
+           (verdict--bump-status-count new 1))))
      (verdict--schedule-render))
 
     (:done
