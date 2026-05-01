@@ -308,21 +308,19 @@ Caches the result in `verdict-dart--package-config'."
          (config-file (when dir (f-join dir ".dart_tool" "package_config.json"))))
     (setq verdict-dart--package-config
           (when config-file
-            (let* ((json (json-parse-string
-                    (with-temp-buffer
-                      (insert-file-contents config-file)
-                      (buffer-string))
-                    :object-type 'plist))
-             (packages (plist-get json :packages))
-             (dart-tool-dir (f-join dir ".dart_tool"))
-             (result nil))
+            (let* ((json          (with-temp-buffer
+                                    (insert-file-contents config-file)
+                                    (json-parse-buffer :object-type 'plist)))
+                   (packages      (plist-get json :packages))
+                   (dart-tool-dir (f-join dir ".dart_tool"))
+                   (result        nil))
               (seq-doseq (pkg packages)
                 (let* ((name     (plist-get pkg :name))
                        (root-uri (plist-get pkg :rootUri))
                        (pkg-uri  (or (plist-get pkg :packageUri) "lib/"))
                        (abs-root (if (string-prefix-p "file://" root-uri)
                                      (string-remove-prefix "file://" root-uri)
-                             (expand-file-name root-uri dart-tool-dir)))
+                                   (expand-file-name root-uri dart-tool-dir)))
                        (lib-dir  (expand-file-name pkg-uri abs-root)))
                   (push (cons name lib-dir) result)))
               result)))))
@@ -368,29 +366,30 @@ Returns MESSAGE unchanged if ANCHOR-FILE is nil."
   (if (null anchor-file)
       message
     (let ((msg (copy-sequence message))
+          (dir (f-dirname anchor-file))
           (pos 0))
-    (while (string-match
-            "^\\(package:[^ \n]+\\|org-dartlang-sdk:[^ \n]+\\|[^ \n]+\\.dart\\) \\([0-9]+\\):[0-9]+"
-            msg pos)
-      (let* ((path (match-string 1 msg))
-             (line (string-to-number (match-string 2 msg)))
-             (beg  (match-beginning 0))
-             (mend (match-end 0))
-             (action (let ((p path) (ln line) (dir (f-dirname anchor-file)))
-                       (lambda (_btn)
-                         (if-let* ((abs (verdict-dart--resolve-stack-path p dir)))
-                             (progn (find-file-other-window abs)
-                                    (goto-char (point-min))
-                                    (forward-line (1- ln)))
-                           (message "Cannot resolve %s" p))))))
-        (add-text-properties
-         beg mend
-         (list 'button '(t) 'category 'default-button
-               'action action 'follow-link t
-               'face 'link 'mouse-face 'highlight
-               'help-echo (format "%s:%d" path line))
-         msg)
-        (setq pos mend)))
+      (while (string-match
+              "^\\(package:[^ \n]+\\|org-dartlang-sdk:[^ \n]+\\|[^ \n]+\\.dart\\) \\([0-9]+\\):[0-9]+"
+              msg pos)
+        (let* ((path (match-string 1 msg))
+               (line (string-to-number (match-string 2 msg)))
+               (beg  (match-beginning 0))
+               (mend (match-end 0))
+               (action (let ((p path) (ln line) (d dir))
+                         (lambda (_btn)
+                           (if-let* ((abs (verdict-dart--resolve-stack-path p d)))
+                               (progn (find-file-other-window abs)
+                                      (goto-char (point-min))
+                                      (forward-line (1- ln)))
+                             (message "Cannot resolve %s" p))))))
+          (add-text-properties
+           beg mend
+           (list 'button '(t) 'category 'default-button
+                 'action action 'follow-link t
+                 'face 'link 'mouse-face 'highlight
+                 'help-echo (format "%s:%d" path line))
+           msg)
+          (setq pos mend)))
       msg)))
 
 ;;; JSON → Event Translation
@@ -485,7 +484,8 @@ EVENT uses keyword keys, vectors for arrays, and :json-false for false."
                        (pcase (plist-get event :result)
                          ("success" 'passed)
                          ("error"   (if loading 'error 'failed))
-                         (_         'error)))))
+                         (other     (message "verdict-dart: unknown test result %S" other)
+                                    'error)))))
        ;; Skip successful loading tests — suite status is aggregated from children
        (unless (and loading (eq result 'passed))
          (verdict-event (list :type   :test-done

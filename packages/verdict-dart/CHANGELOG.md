@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
  - Regex-based fallback for `:test-at-point` and `:group-at-point` when the Dart tree-sitter grammar is not available.
 
+### Changed
+
+ - Hoist anchor-file directory resolution out of the linkify match loop.
+ - Use `json-parse-buffer` when loading `package_config.json`.
+
+### Fixed
+
+ - Surface unknown dart `:result` values via `message` instead of silently mapping them to error.
+
 ## [0.1.2] - 2026-04-13
 
 ## [0.1.1] - 2026-04-08

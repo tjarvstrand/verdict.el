@@ -143,8 +143,6 @@
 (defvar verdict--auto-braille-font (verdict--detect-braille-font)
   "First Braille-capable font detected at load time, or nil.")
 
-;;; Customization
-
 (defcustom verdict-icon-font verdict--auto-braille-font
   "Font family to use for verdict status icons.
 When non-nil, icons are rendered with `:family FONT' in their face spec.
@@ -227,7 +225,8 @@ The symbol `:root' represents the variadic top-level extension node.")
   "Current frame index into `verdict--spinner-frames'.")
 
 (defvar verdict--spinner-timer nil
-  "Repeating timer that advances the spinner and schedules a render.")
+  "Repeating timer that advances `verdict--spinner-frame'.
+Patches in-tree glyphs in place; does not schedule a render.")
 
 (defvar verdict-model nil
   "List of root node plists (display model, derived from verdict--nodes).")
@@ -242,7 +241,8 @@ The symbol `:root' represents the variadic top-level extension node.")
   "List of status symbols whose tests are currently hidden in the tree.")
 
 (defvar verdict--status-counts nil
-  "alist of (STATUS . COUNT) for test results")
+  "Alist of (STATUS . COUNT) for leaf nodes.
+Maintained incrementally by `verdict-event' and `verdict-stop'.")
 
 (defvar verdict-buffer-name "*verdict*"
   "Name of the verdict results buffer.")
@@ -368,8 +368,9 @@ For each ancestor whose :status actually changes, mark its parent dirty."
         (if (eq old new)
             (setq id nil)
           (plist-put node :status new)
-          (verdict--mark-dirty-parent (verdict--parent-of id))
-          (setq id (verdict--parent-of id)))))))
+          (let ((parent (verdict--parent-of id)))
+            (verdict--mark-dirty-parent parent)
+            (setq id parent)))))))
 
 ;;; Icon/Face Helpers
 
@@ -660,9 +661,10 @@ Applied on top of the treemacs keymap.")
   "Handle single click: move point, then toggle/show output.
 Must be bound to a mouse click, or EVENT will not be supplied."
   (interactive "e")
-  (when (eq 'mouse-1 (elt event 0))
-    (select-window (->> event (cadr) (nth 0)))
-    (goto-char (posn-point (cadr event)))
+  (when (eq 'mouse-1 (car event))
+    (let ((start (event-start event)))
+      (select-window (posn-window start))
+      (goto-char (posn-point start)))
     (when (region-active-p)
       (keyboard-quit))
     (verdict--toggle-or-show-output)
@@ -701,7 +703,6 @@ back to a full render."
   "Insert status filter buttons at the top of the verdict buffer.
 Skips statuses whose count is zero, and omits the line entirely
 when every count is zero."
-  (require 'cus-edit)
   (let* ((counts (verdict--count-by-status))
          (any-nonzero (cl-some (lambda (e) (> (cdr e) 0)) counts)))
     (insert "\n")
@@ -740,9 +741,10 @@ when every count is zero."
 
 (defun verdict--ancestor-or-equal-p (ancestor descendant)
   "Non-nil if ANCESTOR is DESCENDANT or any ancestor of DESCENDANT."
-  (or (equal ancestor descendant)
-      (let ((parent (verdict--parent-of descendant)))
-        (and parent (verdict--ancestor-or-equal-p ancestor parent)))))
+  (let ((cur descendant))
+    (while (and cur (not (equal ancestor cur)))
+      (setq cur (verdict--parent-of cur)))
+    cur))
 
 (defun verdict--prune-dirty-ids (ids)
   "Drop ids in IDS that have an ancestor (or `:root') already in the set.
@@ -753,7 +755,6 @@ when every count is zero."
      (lambda (id)
        (cl-some (lambda (other)
                   (and (not (eq other id))
-                       (not (eq other :root))
                        (verdict--ancestor-or-equal-p other id)))
                 ids))
      ids)))
@@ -926,10 +927,10 @@ Avoids a full tree rebuild by walking text properties tagged
 
 (defun verdict--mode-line-face (face)
   "Return the mode-line variant of FACE for the current window."
-  (let ((suffix (if (if (fboundp 'mode-line-window-selected-p)
-            (mode-line-window-selected-p)
-          (eq (selected-window) (frame-selected-window)))
-        "-mode-line-active-face" "-mode-line-face")))
+  (let* ((selected (if (fboundp 'mode-line-window-selected-p)
+                       (mode-line-window-selected-p)
+                     (eq (selected-window) (frame-selected-window))))
+         (suffix (if selected "-mode-line-active-face" "-mode-line-face")))
     (intern (concat (string-remove-suffix "-face" (symbol-name face)) suffix))))
 
 (defun verdict--count-by-status ()
@@ -958,22 +959,23 @@ Reads from `verdict--status-counts', which is kept in sync by
                                         map)))))
     ('finished
      (let* ((counts (verdict--count-by-status))
-            (passed  (or (cdr (assq 'passed counts)) 0))
-            (failed  (or (cdr (assq 'failed counts)) 0))
-            (errored (or (cdr (assq 'error counts)) 0))
-            (skipped (or (cdr (assq 'skipped counts)) 0))
-            (stopped (or (cdr (assq 'stopped counts)) 0))
-            (total   (+ passed failed errored skipped stopped))
-            (parts   nil))
-       (when (> stopped 0)
-         (push (propertize (format "%d stopped" stopped) 'face (verdict--mode-line-face 'verdict-stopped-face)) parts))
-       (when (> skipped 0)
-         (push (propertize (format "%d skipped" skipped) 'face (verdict--mode-line-face 'verdict-skipped-face)) parts))
-       (when (> errored 0)
-         (push (propertize (format "%d error" errored) 'face (verdict--mode-line-face 'verdict-error-face)) parts))
-       (when (> failed 0)
-         (push (propertize (format "%d failed" failed) 'face (verdict--mode-line-face 'verdict-error-face)) parts))
-       (push (propertize (format "%d passed" passed) 'face (verdict--mode-line-face 'verdict-success-face)) parts)
+            (count  (lambda (s) (or (cdr (assq s counts)) 0)))
+            ;; (STATUS LABEL FACE).  Listed in display order; STATUS = nil means
+            ;; the entry is always shown, otherwise it's only shown when count > 0.
+            (rows '((stopped "stopped" verdict-stopped-face)
+                    (skipped "skipped" verdict-skipped-face)
+                    (error   "error"   verdict-error-face)
+                    (failed  "failed"  verdict-error-face)
+                    (passed  "passed"  verdict-success-face)))
+            (parts nil)
+            (total 0))
+       (pcase-dolist (`(,status ,label ,face) rows)
+         (let ((n (funcall count status)))
+           (cl-incf total n)
+           (when (or (> n 0) (eq status 'passed))
+             (push (propertize (format "%d %s" n label)
+                               'face (verdict--mode-line-face face))
+                   parts))))
        (format " *verdict* %s — %d tests" (string-join parts ", ") total)))
     (_ " *verdict*")))
 
@@ -1013,6 +1015,7 @@ Reads from `verdict--status-counts', which is kept in sync by
 
 (defun verdict--maybe-save-buffer ()
   "Save the current buffer before a run, respecting `verdict-save-before-run'."
+  (require 'cus-edit)  ; `customize-save-variable'
   (when (and (buffer-modified-p) (buffer-file-name))
     (pcase verdict-save-before-run
       ('yes (save-buffer))
@@ -1082,13 +1085,10 @@ adds a synthetic <init> output node (first log to a group node)."
                              :parent-id parent-id
                              :children  nil)))
        (puthash id node verdict--nodes)
-       (cond
-        (parent-id
-         (verdict--add-child parent-id id)
-         (verdict--mark-dirty-parent parent-id))
-        (t
-         (setq verdict--root-ids (append verdict--root-ids (list id)))
-         (verdict--mark-dirty-parent nil))))
+       (if parent-id
+           (verdict--add-child parent-id id)
+         (setq verdict--root-ids (append verdict--root-ids (list id))))
+       (verdict--mark-dirty-parent parent-id))
      (verdict--schedule-render))
 
     (:test-start
@@ -1136,8 +1136,8 @@ adds a synthetic <init> output node (first log to a group node)."
            (verdict--bump-status-count prev -1)
            (verdict--bump-status-count new 1))
          (verdict--mark-dirty-parent (verdict--parent-of id))
-         (verdict--propagate-status-up id)))
-     (verdict--schedule-render))
+         (verdict--propagate-status-up id)
+         (verdict--schedule-render))))
 
     (:done
      (setq verdict--run-state 'finished)

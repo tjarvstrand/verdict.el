@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - Accumulate per-node test output as a list of messages instead of repeatedly concatenating.
  - Cache leaf-status counts incrementally to avoid re-walking all nodes on each read.
  - Refresh only the affected subtree on per-event updates instead of erasing and re-rendering the entire buffer on every structural change.
+ - Skip rendering when a `:test-done` event references an unknown node id.
 
 ## [0.1.2] - 2026-04-13
 
