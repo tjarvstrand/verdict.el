@@ -204,6 +204,10 @@ nil   — prompt before each run, then offer to remember the answer."
 (defvar verdict--root-ids nil
   "Ordered list of root node IDs.")
 
+(defvar verdict--dirty-parent-ids nil
+  "Parent ids whose children list/icons need re-rendering on next render.
+The symbol `:root' represents the variadic top-level extension node.")
+
 (defvar verdict--render-timer nil
   "Debounce timer for rendering.")
 
@@ -334,6 +338,38 @@ return value.")
   "Add DELTA to the count for STATUS in `verdict--status-counts'."
   (when status
     (cl-callf + (alist-get status verdict--status-counts 0) delta)))
+
+(defun verdict--group-status (id)
+  "Return the aggregate status for group ID from its children's :status."
+  (let* ((node      (gethash id verdict--nodes))
+         (child-ids (plist-get node :children))
+         (statuses  (mapcar (lambda (cid)
+                              (plist-get (gethash cid verdict--nodes) :status))
+                            child-ids)))
+    (verdict--worst-status statuses)))
+
+(defun verdict--parent-of (id)
+  "Return the parent id of node ID, or nil for a root node."
+  (plist-get (gethash id verdict--nodes) :parent-id))
+
+(defun verdict--mark-dirty-parent (parent-id)
+  "Record PARENT-ID's children list/icons as needing a re-render.
+PARENT-ID nil indicates the variadic top-level (recorded as `:root')."
+  (push (or parent-id :root) verdict--dirty-parent-ids))
+
+(defun verdict--propagate-status-up (start-id)
+  "Walk up from START-ID, updating each ancestor's :status as aggregates change.
+For each ancestor whose :status actually changes, mark its parent dirty."
+  (let ((id (verdict--parent-of start-id)))
+    (while id
+      (let* ((node (gethash id verdict--nodes))
+             (old  (plist-get node :status))
+             (new  (verdict--group-status id)))
+        (if (eq old new)
+            (setq id nil)
+          (plist-put node :status new)
+          (verdict--mark-dirty-parent (verdict--parent-of id))
+          (setq id (verdict--parent-of id)))))))
 
 ;;; Icon/Face Helpers
 
@@ -543,10 +579,9 @@ PREV is the node's :output before this message; used to add a newline separator.
   "Visit the file/line for the node whose link icon was clicked.
 EVENT is the mouse event."
   (interactive "e")
-  (let ((pos (posn-point (event-start event))))
-    (when pos
-      (goto-char pos)
-      (verdict--visit))))
+  (when-let* ((pos (posn-point (event-start event))))
+    (goto-char pos)
+    (verdict--visit)))
 
 (defun verdict--visit-link (file)
   "Return a propertized link icon string when FILE is non-nil."
@@ -581,10 +616,9 @@ EVENT is the mouse event."
   "Rerun the test/group whose rerun link was clicked.
 EVENT is the mouse event."
   (interactive "e")
-  (let ((pos (posn-point (event-start event))))
-    (when pos
-      (goto-char pos)
-      (verdict--rerun-at-node))))
+  (when-let* ((pos (posn-point (event-start event))))
+    (goto-char pos)
+    (verdict--rerun-at-node)))
 
 (defvar verdict-results-map
   (let ((map (make-sparse-keymap)))
@@ -647,11 +681,13 @@ Must be bound to a mouse click, or EVENT will not be supplied."
 ;;; Status Filter
 
 (defun verdict--toggle-status-filter (status)
-  "Toggle visibility of STATUS in the verdict tree and re-render."
+  "Toggle visibility of STATUS in the verdict tree and re-render.
+Filter changes affect every group's visible child list, so this falls
+back to a full render."
   (if (memq status verdict--hidden-statuses)
       (setq verdict--hidden-statuses (delq status verdict--hidden-statuses))
     (push status verdict--hidden-statuses))
-  (verdict--render))
+  (verdict--render-full))
 
 (defun verdict--render-command-header ()
   "Insert the run header at the top of the verdict buffer."
@@ -702,9 +738,116 @@ when every count is zero."
     (setq verdict--render-timer
           (run-with-timer 0.1 nil #'verdict--render))))
 
+(defun verdict--ancestor-or-equal-p (ancestor descendant)
+  "Non-nil if ANCESTOR is DESCENDANT or any ancestor of DESCENDANT."
+  (or (equal ancestor descendant)
+      (let ((parent (verdict--parent-of descendant)))
+        (and parent (verdict--ancestor-or-equal-p ancestor parent)))))
+
+(defun verdict--prune-dirty-ids (ids)
+  "Drop ids in IDS that have an ancestor (or `:root') already in the set.
+`:root' subsumes all other ids."
+  (if (memq :root ids)
+      '(:root)
+    (cl-remove-if
+     (lambda (id)
+       (cl-some (lambda (other)
+                  (and (not (eq other id))
+                       (not (eq other :root))
+                       (verdict--ancestor-or-equal-p other id)))
+                ids))
+     ids)))
+
+(defun verdict--node-path (id)
+  "Return the treemacs extension path list for ID."
+  (let ((path (list id))
+        (cur  (verdict--parent-of id)))
+    (while cur
+      (push cur path)
+      (setq cur (verdict--parent-of cur)))
+    (cons "verdict-root" path)))
+
+(defun verdict--refresh-subtree-of (parent-id)
+  "Refresh the children list of PARENT-ID via `treemacs-do-update-node'.
+PARENT-ID is a node id; never `:root' (root refreshes go through the
+full-render fallback because the variadic top-level button is
+invisible and cannot be reached by `treemacs-find-visible-node').
+
+Mutates the cached `:item.:children' on the parent button so that the
+treemacs `:children' form sees freshly-built child plists when it
+re-expands.  Builds the parent's full plist via `verdict--build-tree'
+so synthetic `<init>' children and aggregate status are included."
+  (-when-let* ((path (verdict--node-path parent-id))
+               (dom  (treemacs-find-in-dom path))
+               (btn  (treemacs-dom-node->position dom))
+               (built (car (verdict--build-tree (list parent-id)))))
+    (let ((stale-item (treemacs-button-get btn :item)))
+      (plist-put stale-item :children (plist-get built :children)))
+    (save-excursion
+      (goto-char btn)
+      (treemacs-do-update-node path))))
+
 (defun verdict--render ()
-  "Convert state to display model and refresh the verdict buffer."
+  "Apply all pending dirty markers to the verdict buffer.
+Refreshes only the dirtied subtrees via `treemacs-do-update-node', after
+pruning ids whose ancestor is also dirty.  Falls back to
+`verdict--render-full' when the dirty set reaches `:root' (the variadic
+top-level button is invisible and cannot be reached by
+`treemacs-find-visible-node')."
   (setq verdict--render-timer nil)
+  (cond
+   ((memq :root verdict--dirty-parent-ids)
+    (setq verdict--dirty-parent-ids nil)
+    (verdict--render-full))
+   (verdict--dirty-parent-ids
+    (let ((dirty (verdict--prune-dirty-ids
+                  (delete-dups verdict--dirty-parent-ids))))
+      (setq verdict--dirty-parent-ids nil)
+      (when-let* ((buf (get-buffer verdict-buffer-name)))
+        (with-current-buffer buf
+          (treemacs-with-writable-buffer
+           (dolist (id dirty)
+             (verdict--refresh-subtree-of id)))
+          (verdict--refresh-headers)
+          (when (fboundp 'hl-line-highlight)
+            (hl-line-highlight))))))))
+
+(defun verdict--header-end ()
+  "Return buffer position where the treemacs tree starts.
+Skips the command and filter header region (`point-min' until the first
+treemacs-managed button, i.e. the hidden variadic root marker).  The
+filter header itself contains text-buttons (category `default-button'),
+so we discriminate by category rather than the generic `button' property."
+  (save-excursion
+    (goto-char (point-min))
+    (if-let* ((m (text-property-search-forward 'category 'treemacs-button t)))
+        (prop-match-beginning m)
+      (point-min))))
+
+(defun verdict--render-headers ()
+  "Insert command header and filter header at point.
+Caller is responsible for being at `point-min' inside a writable buffer."
+  (verdict--render-command-header)
+  (verdict--render-filter-header))
+
+(defun verdict--refresh-headers ()
+  "Replace the header region (above the treemacs tree) with a freshly-built one."
+  (treemacs-with-writable-buffer
+   (save-excursion
+     (let ((end (verdict--header-end)))
+       (delete-region (point-min) end))
+     (goto-char (point-min))
+     (verdict--render-headers))))
+
+(defun verdict--render-full ()
+  "Erase and rebuild the entire verdict buffer.
+This is the fallback path, used for initial setup, status-filter
+toggles, `verdict-stop', and any event whose dirty marker reaches
+`:root' (the variadic top-level button is invisible and cannot be
+reached by `treemacs-find-visible-node').  Steady-state event flow
+goes through `verdict--render' instead."
+  (setq verdict--render-timer nil
+        verdict--dirty-parent-ids nil)
   (setq verdict-model (verdict--build-tree verdict--root-ids))
 
   ;; Avoid accidental shadowing of treemacs-initialize by the deprecated treemacs-extensions
@@ -720,8 +863,7 @@ when every count is zero."
            (erase-buffer)
            (treemacs--render-extension (treemacs--ext-symbol-to-instance 'verdict-root) 99)
            (goto-char (point-min))
-           (verdict--render-command-header)
-           (verdict--render-filter-header))
+           (verdict--render-headers))
           (goto-char (min saved-point (point-max)))
           (dolist (entry saved-windows)
             (let ((w (car entry))
@@ -732,8 +874,7 @@ when every count is zero."
       (treemacs-initialize verdict-root :with-expand-depth 99)
       (treemacs-with-writable-buffer
        (goto-char (point-min))
-       (verdict--render-command-header)
-       (verdict--render-filter-header))
+       (verdict--render-headers))
       (setq-local mode-line-format verdict--mode-line-format)
       (let ((map (copy-keymap verdict-results-map)))
         (set-keymap-parent map (current-local-map))
@@ -751,23 +892,22 @@ Avoids a full tree rebuild by walking text properties tagged
   (verdict--update-mode-line)
   (when-let* ((buf (get-buffer verdict-buffer-name)))
     (with-current-buffer buf
-      (when (derived-mode-p 'treemacs-mode)
-        (let ((new-frame (aref (verdict--spinner-frames) verdict--spinner-frame)))
-          (treemacs-with-writable-buffer
-           (save-excursion
-             (goto-char (point-min))
-             (let (m)
-               (while (setq m (text-property-search-forward 'verdict-spinner t t))
-                 (let* ((start (prop-match-beginning m))
-                        (end   (prop-match-end m))
-                        (face  (get-text-property start 'face))
-                        (disp  (get-text-property start 'display)))
-                   (delete-region start end)
-                   (goto-char start)
-                   (insert (propertize new-frame
-                                       'verdict-spinner t
-                                       'face face
-                                       'display disp))))))))))))
+      (let ((new-frame (aref (verdict--spinner-frames) verdict--spinner-frame)))
+        (treemacs-with-writable-buffer
+         (save-excursion
+           (goto-char (point-min))
+           (let (m)
+             (while (setq m (text-property-search-forward 'verdict-spinner t t))
+               (let* ((start (prop-match-beginning m))
+                      (end   (prop-match-end m))
+                      (face  (get-text-property start 'face))
+                      (disp  (get-text-property start 'display)))
+                 (delete-region start end)
+                 (goto-char start)
+                 (insert (propertize new-frame
+                                     'verdict-spinner t
+                                     'face face
+                                     'display disp)))))))))))
 
 (defun verdict--spinner-start ()
   "Start the spinner timer."
@@ -868,7 +1008,8 @@ Reads from `verdict--status-counts', which is kept in sync by
   (setq verdict--output-node-id nil)
   (setq verdict--run-state nil)
   (setq verdict--hidden-statuses nil)
-  (setq verdict--status-counts nil))
+  (setq verdict--status-counts nil)
+  (setq verdict--dirty-parent-ids nil))
 
 (defun verdict--maybe-save-buffer ()
   "Save the current buffer before a run, respecting `verdict-save-before-run'."
@@ -895,12 +1036,13 @@ Reads from `verdict--status-counts', which is kept in sync by
   (verdict-reset)
   (setq verdict--run-state 'running)
   (verdict--spinner-start)
-  (let ((buf (verdict--render)))
+  (let ((buf (verdict--render-full)))
     (unless (get-buffer-window buf)
       (display-buffer buf '(nil (inhibit-same-window . t))))))
 
 (defun verdict-stop ()
-  "Mark all running nodes as stopped and render."
+  "Mark all running nodes as stopped and render.
+Uses the full-render path because every group's aggregate may have shifted."
   (verdict--spinner-stop)
   (setq verdict--run-state   'finished
         verdict--kill-handle nil)
@@ -915,7 +1057,7 @@ Reads from `verdict--status-counts', which is kept in sync by
          (verdict--bump-status-count 'running -1)
          (verdict--bump-status-count 'stopped 1))))
    verdict--nodes)
-  (verdict--render)
+  (verdict--render-full)
   (verdict--update-mode-line))
 
 (defun verdict-event (event)
@@ -931,32 +1073,40 @@ adds a synthetic <init> output node (first log to a group node)."
      (let* ((id        (plist-get event :id))
             (parent-id (plist-get event :parent-id))
             (name      (plist-get event :name))
-            (node      (list :id       id
-                             :name     name
-                             :label    (or (plist-get event :label) name)
-                             :status   'running
-                             :file     (plist-get event :file)
-                             :line     (plist-get event :line)
-                             :children nil)))
+            (node      (list :id        id
+                             :name      name
+                             :label     (or (plist-get event :label) name)
+                             :status    'running
+                             :file      (plist-get event :file)
+                             :line      (plist-get event :line)
+                             :parent-id parent-id
+                             :children  nil)))
        (puthash id node verdict--nodes)
-       (if (gethash parent-id verdict--nodes)
-           (verdict--add-child parent-id id)
-         (setq verdict--root-ids (append verdict--root-ids (list id)))))
+       (cond
+        (parent-id
+         (verdict--add-child parent-id id)
+         (verdict--mark-dirty-parent parent-id))
+        (t
+         (setq verdict--root-ids (append verdict--root-ids (list id)))
+         (verdict--mark-dirty-parent nil))))
      (verdict--schedule-render))
 
     (:test-start
      (let* ((id        (plist-get event :id))
             (parent-id (plist-get event :parent-id))
             (name      (plist-get event :name))
-            (node      (list :id     id
-                             :name   name
-                             :label  (or (plist-get event :label) name)
-                             :status 'running
-                             :file   (plist-get event :file)
-                             :line   (plist-get event :line))))
+            (node      (list :id        id
+                             :name      name
+                             :label     (or (plist-get event :label) name)
+                             :status    'running
+                             :file      (plist-get event :file)
+                             :line      (plist-get event :line)
+                             :parent-id parent-id)))
        (puthash id node verdict--nodes)
        (verdict--add-child parent-id id)
-       (verdict--bump-status-count 'running 1))
+       (verdict--bump-status-count 'running 1)
+       (verdict--mark-dirty-parent parent-id)
+       (verdict--propagate-status-up id))
      (verdict--schedule-render))
 
     (:log
@@ -967,21 +1117,26 @@ adds a synthetic <init> output node (first log to a group node)."
          (let ((prev (plist-get node :output)))
            (plist-put node :output (cons msg prev))
            (verdict--append-output-buffer id prev msg)
-           ;; Render only on the first log to a group node — that is
-           ;; the one transition that can newly add a synthetic <init>
-           ;; child to the tree.  Leaf logs and subsequent group logs
-           ;; never change the tree.
+           ;; Schedule a render only on the first log to a group node — that
+           ;; is the one transition that can newly add a synthetic <init>
+           ;; child to the tree.  Leaf logs and subsequent group logs never
+           ;; change the tree.  Refreshing the group itself rebuilds its
+           ;; :item.:children to include the new <init> entry.
            (when (and (null prev) (plist-member node :children))
+             (verdict--mark-dirty-parent id)
              (verdict--schedule-render))))))
 
     (:test-done
-     (when-let* ((node (gethash (plist-get event :id) verdict--nodes)))
+     (when-let* ((id   (plist-get event :id))
+                 (node (gethash id verdict--nodes)))
        (let ((prev (plist-get node :status))
              (new  (plist-get event :result)))
          (plist-put node :status new)
          (unless (plist-member node :children)
            (verdict--bump-status-count prev -1)
-           (verdict--bump-status-count new 1))))
+           (verdict--bump-status-count new 1))
+         (verdict--mark-dirty-parent (verdict--parent-of id))
+         (verdict--propagate-status-up id)))
      (verdict--schedule-render))
 
     (:done

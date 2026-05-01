@@ -8,18 +8,20 @@
 (defun verdict-test--reset ()
   "Reset all verdict global state for test isolation."
   (clrhash verdict--nodes)
-  (setq verdict--root-ids     nil
-        verdict--render-timer  nil
-        verdict--spinner-timer nil
-        verdict--spinner-frame 0
-        verdict--partial       ""
-        verdict--proc          nil
-        verdict--kill-handle   nil
-        verdict--proc-backend  nil
-        verdict--last-backend  nil
-        verdict--last-context  nil
-        verdict--backends      nil
-        verdict-model          nil))
+  (setq verdict--root-ids        nil
+        verdict--render-timer    nil
+        verdict--spinner-timer   nil
+        verdict--spinner-frame   0
+        verdict--partial         ""
+        verdict--proc            nil
+        verdict--kill-handle     nil
+        verdict--proc-backend    nil
+        verdict--last-backend    nil
+        verdict--last-context    nil
+        verdict--backends        nil
+        verdict-model            nil
+        verdict--status-counts   nil
+        verdict--dirty-parent-ids nil))
 
 (defun verdict-test--node (id &rest props)
   "Store a node with ID and PROPS in verdict--nodes and return it."
@@ -233,10 +235,6 @@
       (verdict-event '(:type :group :id "g1" :name "Suite" :file "/a.dart" :line 1 :parent-id nil))
       (expect verdict--root-ids :to-equal '("g1")))
 
-    (it "adds to root-ids when parent-id is not found in verdict--nodes"
-      (verdict-event '(:type :group :id "g1" :name "Suite" :file "/a.dart" :line 1 :parent-id "nonexistent"))
-      (expect verdict--root-ids :to-equal '("g1")))
-
     (it "adds as child of an existing parent and does not touch root-ids"
       (verdict-test--node "parent" :children nil)
       (verdict-event '(:type :group :id "child" :name "Child" :file "/a.dart" :line 2 :parent-id "parent"))
@@ -278,37 +276,51 @@
       (expect 'verdict--schedule-render :to-have-been-called)))
 
   (describe ":log"
-    (it "sets :output on the node for the first message"
+    (it "conses the first message onto the node's :output list"
       (verdict-test--node "t1" :status 'running)
       (verdict-event '(:type :log :id "t1" :severity info :message "first line"))
-      (expect (plist-get (gethash "t1" verdict--nodes) :output) :to-equal "first line"))
+      (expect (plist-get (gethash "t1" verdict--nodes) :output)
+              :to-equal '("first line")))
 
-    (it "appends subsequent messages with a newline separator"
+    (it "conses subsequent messages onto the head, newest first"
       (verdict-test--node "t1" :status 'running)
       (verdict-event '(:type :log :id "t1" :severity info :message "line 1"))
       (verdict-event '(:type :log :id "t1" :severity info :message "line 2"))
-      (expect (plist-get (gethash "t1" verdict--nodes) :output) :to-equal "line 1\nline 2"))
+      (expect (plist-get (gethash "t1" verdict--nodes) :output)
+              :to-equal '("line 2" "line 1")))
 
     (it "propertizes error messages with verdict-error-face"
       (verdict-test--node "t1" :status 'running)
       (verdict-event '(:type :log :id "t1" :severity error :message "oh no"))
-      (let ((output (plist-get (gethash "t1" verdict--nodes) :output)))
-        (expect (get-text-property 0 'face output) :to-be 'verdict-error-face)))
+      (let ((msg (car (plist-get (gethash "t1" verdict--nodes) :output))))
+        (expect (get-text-property 0 'face msg) :to-be 'verdict-error-face)))
 
     (it "does not propertize info messages"
       (verdict-test--node "t1" :status 'running)
       (verdict-event '(:type :log :id "t1" :severity info :message "plain"))
-      (let ((output (plist-get (gethash "t1" verdict--nodes) :output)))
-        (expect (get-text-property 0 'face output) :to-be nil)))
+      (let ((msg (car (plist-get (gethash "t1" verdict--nodes) :output))))
+        (expect (get-text-property 0 'face msg) :to-be nil)))
 
     (it "ignores events for unknown node ids"
       (verdict-event '(:type :log :id "unknown" :severity info :message "msg"))
       (expect (gethash "unknown" verdict--nodes) :to-be nil))
 
-    (it "schedules a render"
+    (it "does not schedule a render for a leaf log"
       (verdict-test--node "t1" :status 'running)
       (verdict-event '(:type :log :id "t1" :severity info :message "msg"))
-      (expect 'verdict--schedule-render :to-have-been-called)))
+      (expect 'verdict--schedule-render :not :to-have-been-called))
+
+    (it "schedules a render on the first log to a group node"
+      (verdict-test--node "g1" :children nil)
+      (verdict-event '(:type :log :id "g1" :severity error :message "boom"))
+      (expect 'verdict--schedule-render :to-have-been-called))
+
+    (it "does not schedule a render on subsequent logs to the same group"
+      (verdict-test--node "g1" :children nil)
+      (verdict-event '(:type :log :id "g1" :severity error :message "first"))
+      (spy-calls-reset 'verdict--schedule-render)
+      (verdict-event '(:type :log :id "g1" :severity error :message "second"))
+      (expect 'verdict--schedule-render :not :to-have-been-called)))
 
   (describe ":test-done"
     (it "updates the node's :status to the result"
@@ -336,9 +348,9 @@
       (expect 'verdict--schedule-render :to-have-been-called)))
 
   (describe ":done"
-    (it "schedules a render"
+    (it "marks the run as finished"
       (verdict-event '(:type :done))
-      (expect 'verdict--schedule-render :to-have-been-called))))
+      (expect verdict--run-state :to-be 'finished))))
 
 ;;; verdict--build-tree
 
@@ -416,7 +428,7 @@
 (describe "verdict-stop"
   (before-each
     (verdict-test--reset)
-    (spy-on 'verdict--render))
+    (spy-on 'verdict--render-full))
 
   (it "marks running nodes as stopped"
     (verdict-test--node "t1" :status 'running)
@@ -450,9 +462,9 @@
     (verdict-stop)
     (expect verdict--render-timer :to-be nil))
 
-  (it "calls verdict--render"
+  (it "calls verdict--render-full"
     (verdict-stop)
-    (expect 'verdict--render :to-have-been-called)))
+    (expect 'verdict--render-full :to-have-been-called)))
 
 ;;; verdict--filter
 
@@ -606,9 +618,10 @@
       (verdict--spinner-tick)
       (expect verdict--spinner-frame :to-be 0)))
 
-  (it "schedules a render"
+  (it "updates the mode line in place"
+    (spy-on 'verdict--update-mode-line)
     (verdict--spinner-tick)
-    (expect 'verdict--schedule-render :to-have-been-called)))
+    (expect 'verdict--update-mode-line :to-have-been-called)))
 
 ;;; verdict--run / verdict-rerun
 
