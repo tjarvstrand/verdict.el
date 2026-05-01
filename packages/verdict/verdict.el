@@ -486,7 +486,7 @@ Filters out nodes whose status is in `verdict--hidden-statuses'."
     (let ((sep (propertize (make-string (length label) ?─) 'face 'verdict-name-face)))
       (insert sep "\n" (propertize label 'face 'verdict-name-face) "\n" sep "\n\n"))
     (when output
-      (insert (ansi-color-apply output)))))
+      (insert (ansi-color-apply (string-join (reverse output) "\n"))))))
 
 (defun verdict--append-output-buffer (id prev msg)
   "Append MSG to *verdict-output* if it is open and showing node ID.
@@ -959,7 +959,7 @@ adds a synthetic <init> output node (first log to a group node)."
             (node   (gethash id verdict--nodes)))
        (when (and msg node)
          (let ((prev (plist-get node :output)))
-           (plist-put node :output (if prev (concat prev "\n" msg) msg))
+           (plist-put node :output (cons msg prev))
            (verdict--append-output-buffer id prev msg)
            ;; Render only on the first log to a group node — that is
            ;; the one transition that can newly add a synthetic <init>

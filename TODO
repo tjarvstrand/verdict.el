@@ -1,4 +1,5 @@
  - Allow running all tests in project/module from anywhere, not just test files.
  - Run history
  - Separate windows per fram/tab/project
- - 
+ - melpazoid checks
+ - publish verdict-dart
