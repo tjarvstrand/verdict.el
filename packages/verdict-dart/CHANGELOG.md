@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
  - Surface unknown dart `:result` values via `message` instead of silently mapping them to error.
+ - `verdict-dart--pcre-quote` now actually escapes metacharacters in test names; the previous character class terminated early at `\]` and silently passed everything through.
 
 ## [0.1.2] - 2026-04-13
 

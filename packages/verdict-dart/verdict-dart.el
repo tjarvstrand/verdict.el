@@ -572,8 +572,10 @@ Checks the project's pubspec.yaml for Flutter dependencies."
   (verdict-dart--flutter-project-p (plist-get context :project)))
 
 (defun verdict-dart--pcre-quote (string)
-  "Escape PCRE metacharacters in STRING."
-  (replace-regexp-in-string "[\\\\^$.|?*+()\\[\\]{}]" "\\\\\\&" string))
+  "Return STRING with PCRE metacharacters backslash-escaped."
+  ;; `]' must come first in the Emacs character alternative so it is
+  ;; treated as a literal member; `\\]' is not an escape inside `[...]'.
+  (replace-regexp-in-string "[][\\\\^$.|?*+(){}]" "\\\\\\&" string))
 
 (defun verdict-dart--name-filter-args (names)
   "Return command-line args to filter by NAMES, or nil."

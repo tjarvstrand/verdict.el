@@ -696,13 +696,163 @@
       (verdict-run-last)
       (expect call-count :to-be 0))))
 
-;;; Output buffer (verdict--show-output)
-;;
-;; verdict--show-output cannot be unit-tested because treemacs-button-get is a
-;; defsubst that the byte-compiler inlines into verdict--show-output at compile
-;; time.  spy-on replaces the symbol's function cell, but the inlined call in
-;; the compiled body bypasses it.  These are better covered by manual / demo
-;; testing via verdict-demo.el.
+;;; verdict-find-node / verdict-running-p
+
+(describe "verdict-find-node"
+  (before-each (verdict-test--reset))
+
+  (it "returns the node plist for an existing id"
+    (verdict-test--node "t1" :file "/a.dart" :status 'passed)
+    (let ((node (verdict-find-node "t1")))
+      (expect (plist-get node :file)   :to-equal "/a.dart")
+      (expect (plist-get node :status) :to-be 'passed)))
+
+  (it "returns nil for an unknown id"
+    (expect (verdict-find-node "ghost") :to-be nil)))
+
+(describe "verdict-running-p"
+  (before-each (verdict-test--reset))
+
+  (it "is non-nil while a run is in progress"
+    (let ((verdict--run-state 'running))
+      (expect (verdict-running-p) :to-be t)))
+
+  (it "is nil when finished"
+    (let ((verdict--run-state 'finished))
+      (expect (verdict-running-p) :to-be nil)))
+
+  (it "is nil when no run has started"
+    (let ((verdict--run-state nil))
+      (expect (verdict-running-p) :to-be nil))))
+
+;;; verdict--ancestor-or-equal-p
+
+(describe "verdict--ancestor-or-equal-p"
+  (before-each (verdict-test--reset))
+
+  (it "returns non-nil when ancestor equals descendant"
+    (verdict-test--node "x" :parent-id nil)
+    (expect (verdict--ancestor-or-equal-p "x" "x") :not :to-be nil))
+
+  (it "returns non-nil for a direct parent"
+    (verdict-test--node "p" :parent-id nil)
+    (verdict-test--node "c" :parent-id "p")
+    (expect (verdict--ancestor-or-equal-p "p" "c") :not :to-be nil))
+
+  (it "returns non-nil for a grandparent"
+    (verdict-test--node "g" :parent-id nil)
+    (verdict-test--node "p" :parent-id "g")
+    (verdict-test--node "c" :parent-id "p")
+    (expect (verdict--ancestor-or-equal-p "g" "c") :not :to-be nil))
+
+  (it "returns nil for unrelated nodes"
+    (verdict-test--node "a" :parent-id nil)
+    (verdict-test--node "b" :parent-id nil)
+    (expect (verdict--ancestor-or-equal-p "a" "b") :to-be nil))
+
+  (it "returns nil when descendant is the ancestor's parent (wrong direction)"
+    (verdict-test--node "p" :parent-id nil)
+    (verdict-test--node "c" :parent-id "p")
+    (expect (verdict--ancestor-or-equal-p "c" "p") :to-be nil)))
+
+;;; verdict--prune-dirty-ids
+
+(describe "verdict--prune-dirty-ids"
+  (before-each (verdict-test--reset))
+
+  (it "returns disjoint ids unchanged"
+    (verdict-test--node "a" :parent-id nil)
+    (verdict-test--node "b" :parent-id nil)
+    (let ((result (verdict--prune-dirty-ids '("a" "b"))))
+      (expect (sort (copy-sequence result) #'string<) :to-equal '("a" "b"))))
+
+  (it "drops descendants when an ancestor is also dirty"
+    (verdict-test--node "p" :parent-id nil)
+    (verdict-test--node "c" :parent-id "p")
+    (expect (verdict--prune-dirty-ids '("p" "c")) :to-equal '("p")))
+
+  (it "drops grandchildren when the grandparent is dirty"
+    (verdict-test--node "g" :parent-id nil)
+    (verdict-test--node "p" :parent-id "g")
+    (verdict-test--node "c" :parent-id "p")
+    (expect (verdict--prune-dirty-ids '("g" "c")) :to-equal '("g")))
+
+  (it "collapses to (:root) whenever :root is in the set"
+    (expect (verdict--prune-dirty-ids '(:root "a" "b")) :to-equal '(:root))))
+
+;;; verdict--propagate-status-up
+
+(describe "verdict--propagate-status-up"
+  (before-each (verdict-test--reset))
+
+  (it "updates a direct parent when its aggregate changes"
+    (verdict-test--node "p" :status 'running :parent-id nil :children '("c"))
+    (verdict-test--node "c" :status 'failed  :parent-id "p")
+    (verdict--propagate-status-up "c")
+    (expect (plist-get (gethash "p" verdict--nodes) :status) :to-be 'failed))
+
+  (it "propagates through multiple levels"
+    (verdict-test--node "g" :status 'running :parent-id nil :children '("p"))
+    (verdict-test--node "p" :status 'running :parent-id "g"  :children '("c"))
+    (verdict-test--node "c" :status 'error   :parent-id "p")
+    (verdict--propagate-status-up "c")
+    (expect (plist-get (gethash "p" verdict--nodes) :status) :to-be 'error)
+    (expect (plist-get (gethash "g" verdict--nodes) :status) :to-be 'error))
+
+  (it "stops walking when an aggregate is unchanged"
+    (verdict-test--node "g" :status 'failed  :parent-id nil :children '("p1" "p2"))
+    (verdict-test--node "p1" :status 'failed :parent-id "g"  :children '("c1"))
+    (verdict-test--node "p2" :status 'failed :parent-id "g"  :children '("c2"))
+    (verdict-test--node "c1" :status 'failed :parent-id "p1")
+    (verdict-test--node "c2" :status 'failed :parent-id "p2")
+    ;; c1 stays failed: p1 stays failed: g stays failed.
+    (verdict--propagate-status-up "c1")
+    (expect (plist-get (gethash "g" verdict--nodes) :status) :to-be 'failed))
+
+  (it "is a no-op for a root node"
+    (verdict-test--node "r" :status 'running :parent-id nil)
+    (expect (verdict--propagate-status-up "r") :not :to-throw)))
+
+;;; verdict-rerun-failed
+
+(describe "verdict-rerun-failed"
+  (before-each
+    (verdict-test--reset)
+    (spy-on 'verdict--launch))
+
+  (it "errors when there is no previous run"
+    (expect (verdict-rerun-failed) :to-throw 'error))
+
+  (it "errors when no tests have failed"
+    (verdict-test--node "t1" :status 'passed :file "/a.dart" :name "n1")
+    (setq verdict--last-backend (list :context-fn (lambda (_) nil))
+          verdict--last-context '(:project "/p"))
+    (expect (verdict-rerun-failed) :to-throw 'error))
+
+  (it "collects failed and errored leaves grouped by file"
+    (verdict-test--node "t1" :status 'failed :file "/a.dart" :name "n1")
+    (verdict-test--node "t2" :status 'error  :file "/a.dart" :name "n2")
+    (verdict-test--node "t3" :status 'passed :file "/a.dart" :name "n3")
+    (verdict-test--node "t4" :status 'failed :file "/b.dart" :name "n4")
+    (let* ((received nil)
+           (ctx-fn (lambda (scope) (setq received scope) '(:project "/p"))))
+      (setq verdict--last-backend (list :context-fn ctx-fn)
+            verdict--last-context '(:project "/p"))
+      (verdict-rerun-failed)
+      (expect (car received) :to-be :tests)
+      (let ((file-tests (cdr received)))
+        (expect (length file-tests) :to-be 2)
+        (let ((a (assoc "/a.dart" file-tests))
+              (b (assoc "/b.dart" file-tests)))
+          (expect (sort (cdr a) #'string<) :to-equal '("n1" "n2"))
+          (expect (cdr b) :to-equal '("n4"))))))
+
+  (it "skips group nodes (only counts leaves)"
+    (verdict-test--node "g1" :status 'failed :children '("t1") :file "/a.dart" :name "g")
+    (verdict-test--node "t1" :status 'passed :file "/a.dart" :name "n1")
+    (setq verdict--last-backend (list :context-fn (lambda (_) nil))
+          verdict--last-context '(:project "/p"))
+    (expect (verdict-rerun-failed) :to-throw 'error)))
 
 (provide 'verdict-test)
 ;;; verdict-test.el ends here

@@ -592,5 +592,197 @@ location."
     (let ((events (verdict-dart-test--collect "fails_no_tests")))
       (expect (verdict-dart-test--by-type events :done) :not :to-be nil))))
 
+;;; verdict-dart--pcre-quote
+
+(describe "verdict-dart--pcre-quote"
+  (it "passes plain text through unchanged"
+    (expect (verdict-dart--pcre-quote "hello world")
+            :to-equal "hello world"))
+
+  (it "escapes the standard PCRE metacharacters"
+    (expect (verdict-dart--pcre-quote "a.b|c?d*e+f(g)h[i]j{k}")
+            :to-equal "a\\.b\\|c\\?d\\*e\\+f\\(g\\)h\\[i\\]j\\{k\\}"))
+
+  (it "escapes anchors and pipe"
+    (expect (verdict-dart--pcre-quote "^foo$")
+            :to-equal "\\^foo\\$"))
+
+  (it "escapes backslash"
+    (expect (verdict-dart--pcre-quote "a\\b")
+            :to-equal "a\\\\b")))
+
+;;; verdict-dart--name-filter-args
+
+(describe "verdict-dart--name-filter-args"
+  (it "returns nil for no names"
+    (expect (verdict-dart--name-filter-args nil) :to-be nil))
+
+  (it "uses --plain-name for a single name"
+    (expect (verdict-dart--name-filter-args '("my test"))
+            :to-equal '("--plain-name" "my test")))
+
+  (it "uses --name with anchored alternation for multiple names"
+    (expect (verdict-dart--name-filter-args '("a" "b"))
+            :to-equal '("--name" "^(a|b)$")))
+
+  (it "escapes PCRE metacharacters in alternation"
+    (expect (verdict-dart--name-filter-args '("a.b" "c|d"))
+            :to-equal '("--name" "^(a\\.b|c\\|d)$"))))
+
+;;; verdict-dart--linkify
+
+(describe "verdict-dart--linkify"
+  (it "returns the message unchanged when anchor-file is nil"
+    (let ((msg "package:foo/bar.dart 10:5"))
+      (expect (verdict-dart--linkify msg nil) :to-equal msg)))
+
+  (it "marks a package: stack frame as a button"
+    (let* ((msg    (verdict-dart--linkify "package:foo/bar.dart 10:5" "/proj/test/x.dart"))
+           (action (get-text-property 0 'action msg)))
+      (expect action :to-be-truthy)
+      (expect (get-text-property 0 'category msg) :to-be 'default-button)
+      (expect (get-text-property 0 'face msg)     :to-be 'link)))
+
+  (it "marks a relative .dart path as a button"
+    (let ((msg (verdict-dart--linkify "test/x.dart 7:1\nmore stuff" "/proj/test/x.dart")))
+      (expect (get-text-property 0 'category msg) :to-be 'default-button)))
+
+  (it "marks org-dartlang-sdk: paths as buttons"
+    (let ((msg (verdict-dart--linkify "org-dartlang-sdk:///lib/core/foo.dart 1:2" "/proj/test/x.dart")))
+      (expect (get-text-property 0 'category msg) :to-be 'default-button)))
+
+  (it "leaves unrelated text unannotated"
+    (let ((msg (verdict-dart--linkify "just a message" "/proj/test/x.dart")))
+      (expect (get-text-property 0 'category msg) :to-be nil)))
+
+  (it "annotates multiple frames in a stack trace"
+    (let* ((trace "package:foo/a.dart 1:1\npackage:foo/b.dart 2:2")
+           (msg   (verdict-dart--linkify trace "/proj/test/x.dart"))
+           (n     (next-property-change 0 msg)))
+      (expect (get-text-property 0 'category msg) :to-be 'default-button)
+      (expect (get-text-property (1+ n) 'category msg) :to-be 'default-button))))
+
+;;; verdict-dart--resolve-stack-path
+
+(describe "verdict-dart--resolve-stack-path"
+  (it "returns nil for dart: built-in URIs"
+    (let ((default-directory temporary-file-directory))
+      (expect (verdict-dart--resolve-stack-path "dart:core" temporary-file-directory)
+              :to-be nil)))
+
+  (it "resolves a relative path against the project root"
+    (let* ((proj (make-temp-file "verdict-dart-test-" t))
+           (verdict-dart--package-config nil))
+      (unwind-protect
+          (progn
+            (with-temp-file (expand-file-name "pubspec.yaml" proj) (insert "name: test\n"))
+            (let* ((sub (expand-file-name "test" proj))
+                   (resolved (progn (make-directory sub t)
+                                    (verdict-dart--resolve-stack-path "lib/foo.dart" sub))))
+              (expect resolved :to-equal (expand-file-name "lib/foo.dart" proj))))
+        (delete-directory proj t))))
+
+  (it "resolves package: URIs via the package config"
+    (let* ((proj (make-temp-file "verdict-dart-test-" t))
+           (lib  (expand-file-name "lib" proj))
+           (verdict-dart--package-config nil))
+      (unwind-protect
+          (progn
+            (with-temp-file (expand-file-name "pubspec.yaml" proj) (insert "name: foo\n"))
+            (make-directory lib t)
+            (make-directory (expand-file-name ".dart_tool" proj) t)
+            (with-temp-file (expand-file-name ".dart_tool/package_config.json" proj)
+              (insert (format "{\"packages\":[{\"name\":\"foo\",\"rootUri\":\"file://%s\",\"packageUri\":\"lib/\"}]}"
+                              proj)))
+            (let ((resolved (verdict-dart--resolve-stack-path "package:foo/bar.dart" proj)))
+              (expect resolved :to-equal (expand-file-name "bar.dart" lib))))
+        (delete-directory proj t)))))
+
+;;; verdict-dart--load-package-config
+
+(describe "verdict-dart--load-package-config"
+  (it "leaves the cache nil when no package_config.json exists"
+    (let* ((proj (make-temp-file "verdict-dart-test-" t))
+           (verdict-dart--package-config 'unset))
+      (unwind-protect
+          (progn
+            (verdict-dart--load-package-config proj)
+            (expect verdict-dart--package-config :to-be nil))
+        (delete-directory proj t))))
+
+  (it "parses package_config.json and resolves rootUri/packageUri"
+    (let* ((proj (make-temp-file "verdict-dart-test-" t))
+           (verdict-dart--package-config nil))
+      (unwind-protect
+          (progn
+            (make-directory (expand-file-name ".dart_tool" proj) t)
+            (with-temp-file (expand-file-name ".dart_tool/package_config.json" proj)
+              (insert (format "{\"packages\":[{\"name\":\"foo\",\"rootUri\":\"file://%s\",\"packageUri\":\"lib/\"}]}"
+                              proj)))
+            (verdict-dart--load-package-config proj)
+            (expect (cdr (assoc "foo" verdict-dart--package-config))
+                    :to-equal (file-name-as-directory (expand-file-name "lib" proj))))
+        (delete-directory proj t)))))
+
+;;; verdict-dart--flutter-project-p
+
+(describe "verdict-dart--flutter-project-p"
+  (it "is non-nil when pubspec depends on the flutter SDK"
+    (let ((proj (make-temp-file "verdict-dart-test-" t)))
+      (unwind-protect
+          (progn
+            (with-temp-file (expand-file-name "pubspec.yaml" proj)
+              (insert "name: app\ndependencies:\n  flutter:\n    sdk: flutter\n"))
+            (expect (verdict-dart--flutter-project-p proj) :to-be-truthy))
+        (delete-directory proj t))))
+
+  (it "is non-nil when a configured package is a dev_dependency"
+    (let ((proj (make-temp-file "verdict-dart-test-" t)))
+      (unwind-protect
+          (progn
+            (with-temp-file (expand-file-name "pubspec.yaml" proj)
+              (insert "name: app\ndev_dependencies:\n  flutter_test:\n    sdk: flutter\n"))
+            (expect (verdict-dart--flutter-project-p proj) :to-be-truthy))
+        (delete-directory proj t))))
+
+  (it "is nil for a plain dart project"
+    (let ((proj (make-temp-file "verdict-dart-test-" t)))
+      (unwind-protect
+          (progn
+            (with-temp-file (expand-file-name "pubspec.yaml" proj)
+              (insert "name: app\ndependencies:\n  test: ^1.0.0\n"))
+            (expect (verdict-dart--flutter-project-p proj) :to-be nil))
+        (delete-directory proj t)))))
+
+;;; verdict-dart--command-fn
+
+(describe "verdict-dart--command-fn"
+  (it "builds a dart test command for a non-flutter project"
+    (spy-on 'verdict-dart--use-flutter-p :and-return-value nil)
+    (let* ((ctx  '(:project "/p" :files ("/p/test/x.dart") :names nil :name "x"))
+           (spec (verdict-dart--command-fn ctx nil)))
+      (expect (plist-get spec :command)   :to-equal '("dart" "test" "-r" "json" "/p/test/x.dart"))
+      (expect (plist-get spec :directory) :to-equal "/p")
+      (expect (plist-get spec :name)      :to-equal "x")))
+
+  (it "uses the flutter runner for a flutter project"
+    (spy-on 'verdict-dart--use-flutter-p :and-return-value t)
+    (let* ((ctx  '(:project "/p" :files ("/p/test/x.dart") :names nil :name "x"))
+           (spec (verdict-dart--command-fn ctx nil)))
+      (expect (car (plist-get spec :command)) :to-equal "flutter")))
+
+  (it "passes --plain-name when one name is supplied"
+    (spy-on 'verdict-dart--use-flutter-p :and-return-value nil)
+    (let* ((ctx  '(:project "/p" :files ("/p/test/x.dart") :names ("my test") :name "my test"))
+           (cmd  (plist-get (verdict-dart--command-fn ctx nil) :command)))
+      (expect (member "--plain-name" cmd) :to-be-truthy)
+      (expect (member "my test"      cmd) :to-be-truthy)))
+
+  (it "returns a thunk command in debug mode"
+    (spy-on 'verdict-dart--use-flutter-p :and-return-value nil)
+    (let* ((ctx  '(:project "/p" :files ("/p/test/x.dart") :names nil :name "x"))
+           (spec (verdict-dart--command-fn ctx t)))
+      (expect (functionp (plist-get spec :command)) :to-be-truthy))))
+
 (provide 'verdict-dart-test)
 ;;; verdict-dart-test.el ends here
