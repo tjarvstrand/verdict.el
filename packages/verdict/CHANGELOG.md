@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - Refresh only the affected subtree on per-event updates instead of erasing and re-rendering the entire buffer on every structural change.
  - Skip rendering when a `:test-done` event references an unknown node id.
 
+### Fixed
+
+ - Hidden statuses no longer distort the displayed aggregate of group nodes; the stored aggregate is used regardless of which child statuses are visible.
+
 ## [0.1.2] - 2026-04-13
 
 ### Fixed

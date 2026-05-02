@@ -383,11 +383,18 @@
            (leaf (car (plist-get mid :children))))
       (expect (plist-get leaf :label) :to-equal "Leaf")))
 
-  (it "aggregates child statuses for group nodes"
-    (verdict-test--node "g1" :label "Group" :children '("t1" "t2"))
+  (it "uses the stored :status for group nodes (not recomputed from children)"
+    (verdict-test--node "g1" :label "Group" :status 'failed :children '("t1" "t2"))
     (verdict-test--node "t1" :label "A" :status 'passed)
     (verdict-test--node "t2" :label "B" :status 'failed)
     (expect (plist-get (car (verdict--build-tree '("g1"))) :status) :to-be 'failed))
+
+  (it "preserves stored :status when a failing child is hidden by the filter"
+    (let ((verdict--hidden-statuses '(failed)))
+      (verdict-test--node "g1" :label "Group" :status 'failed :children '("t1" "t2"))
+      (verdict-test--node "t1" :label "A" :status 'passed)
+      (verdict-test--node "t2" :label "B" :status 'failed)
+      (expect (plist-get (car (verdict--build-tree '("g1"))) :status) :to-be 'failed)))
 
   (it "injects a synthetic output node as first child when group has output"
     (verdict-test--node "g1" :label "Group" :children '("t1") :output "compile error")

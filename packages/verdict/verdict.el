@@ -437,10 +437,7 @@ PARENT-LABEL is used as the title.  OUTPUT is the log text."
         :status    nil))
 
 (defun verdict--build-tree (ids)
-  "Build a nested tree of node plists from IDS by resolving children.
-Recursively resolves :children IDs, computes aggregate :status for groups,
-and injects a synthetic *output* child for any group with :output.
-Filters out nodes whose status is in `verdict--hidden-statuses'."
+  "Build a nested tree of node plists from IDS by resolving children."
   (delq nil
    (mapcar
     (lambda (id)
@@ -462,11 +459,8 @@ Filters out nodes whose status is in `verdict--hidden-statuses'."
                                   (cons (verdict--output-node id (plist-get node :label) output) child-list)
                                 child-list)))
              (when child-list
-               (let* ((agg-status (verdict--worst-status
-                                   (mapcar (lambda (c) (plist-get c :status)) child-list)))
-                      (copy       (copy-sequence node)))
+               (let ((copy (copy-sequence node)))
                  (plist-put copy :children child-list)
-                 (plist-put copy :status agg-status)
                  copy))))
           ((and output (plist-member node :children)
                 (memq (plist-get node :status) '(error failed)))
