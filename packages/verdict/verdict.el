@@ -244,11 +244,16 @@ Patches in-tree glyphs in place; does not schedule a render.")
   "Alist of (STATUS . COUNT) for leaf nodes.
 Maintained incrementally by `verdict-event' and `verdict-stop'.")
 
-(defvar verdict-buffer-name "*verdict*"
-  "Name of the verdict results buffer.")
+(defcustom verdict-buffer-name "*verdict*"
+  "Name of the verdict results buffer."
+  :type 'string
+  :group 'verdict)
 
-(defvar verdict-log-events nil
-  "Whether to print runner events to the messages buffer.")
+(defcustom verdict-log-events nil
+  "If non-nil, log every verdict event to the *Messages* buffer.
+Useful for debugging backend implementations."
+  :type 'boolean
+  :group 'verdict)
 
 ;;; Backend Registration
 
@@ -1291,8 +1296,12 @@ DEBUG is passed to the backend's command function."
 
 ;;; Minor Mode
 
-(defvar verdict-keymap-prefix (kbd "C-c C-t")
-  "Prefix key for verdict-mode keybindings.")
+(defcustom verdict-keymap-prefix (kbd "C-c C-t")
+  "Prefix key for `verdict-mode' keybindings.
+Must be set before `verdict' is loaded; changing it afterwards has no
+effect on the existing keymap."
+  :type 'key-sequence
+  :group 'verdict)
 
 (defun verdict--make-keymap ()
   "Build the verdict minor-mode keymap using `verdict-keymap-prefix'."

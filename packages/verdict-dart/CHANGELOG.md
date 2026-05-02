@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
  - Hoist anchor-file directory resolution out of the linkify match loop.
  - Use `json-parse-buffer` when loading `package_config.json`.
+ - Promote `verdict-dart-flutter-packages` to `defcustom`.
 
 ### Fixed
 

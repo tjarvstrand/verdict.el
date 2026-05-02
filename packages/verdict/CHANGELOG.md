@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - Cache leaf-status counts incrementally to avoid re-walking all nodes on each read.
  - Refresh only the affected subtree on per-event updates instead of erasing and re-rendering the entire buffer on every structural change.
  - Skip rendering when a `:test-done` event references an unknown node id.
+ - Promote `verdict-buffer-name`, `verdict-log-events`, and `verdict-keymap-prefix` to `defcustom`.
 
 ### Fixed
 

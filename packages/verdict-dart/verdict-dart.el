@@ -67,10 +67,12 @@ This is mainly useful for testing the regexp fallback path."
   :type 'boolean
   :group 'verdict-dart)
 
-(defvar verdict-dart-flutter-packages '("flutter_test")
-  "List of package names whose import indicates a Flutter test file.
-When a test file imports any of these packages, `flutter test' is
-used instead of `dart test'.")
+(defcustom verdict-dart-flutter-packages '("flutter_test")
+  "Package names whose presence in pubspec.yaml selects the Flutter runner.
+When the project's pubspec depends on any of these packages, or on the
+flutter SDK, `flutter test' is used instead of `dart test'."
+  :type '(repeat string)
+  :group 'verdict-dart)
 
 ;;; Internal State
 
