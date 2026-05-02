@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
  - Let custom launch functions return a kill-handle that can be used to stop the run.
+ - `verdict-find-node` and `verdict-running-p` for backends to read node and run state without touching internal variables.
 
 ### Changed
 

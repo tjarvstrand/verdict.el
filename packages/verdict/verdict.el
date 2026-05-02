@@ -883,6 +883,20 @@ goes through `verdict--render' instead."
 
 ;;; Public API
 
+;;;###autoload
+(defun verdict-find-node (id)
+  "Return the node plist for ID, or nil if no such node.
+Backends that need to read state about a node (e.g. its file path,
+for stack-trace linkification) should use this rather than reaching
+into `verdict--nodes' directly.  The returned plist is shared with
+internal state and must be treated as read-only by callers."
+  (gethash id verdict--nodes))
+
+;;;###autoload
+(defun verdict-running-p ()
+  "Return non-nil if a verdict run is currently in progress."
+  (eq verdict--run-state 'running))
+
 (defun verdict--spinner-tick ()
   "Advance spinner frame and patch in-tree spinner glyphs in place.
 Avoids a full tree rebuild by walking text properties tagged

@@ -461,7 +461,7 @@ EVENT uses keyword keys, vectors for arrays, and :json-false for false."
 
     ("print"
      (let* ((id   (verdict-dart--resolve-test-id (plist-get event :testID)))
-            (file (plist-get (gethash id verdict--nodes) :file)))
+            (file (plist-get (verdict-find-node id) :file)))
        (verdict-event (list :type     :log
                             :severity 'info
                             :id       id
@@ -469,7 +469,7 @@ EVENT uses keyword keys, vectors for arrays, and :json-false for false."
 
     ("error"
      (let* ((id   (verdict-dart--resolve-test-id (plist-get event :testID)))
-            (file (plist-get (gethash id verdict--nodes) :file)))
+            (file (plist-get (verdict-find-node id) :file)))
        (verdict-event (list :type     :log
                             :severity 'error
                             :id       id
@@ -650,7 +650,7 @@ Returns a kill handle that terminates the dape session
 (cl-defmethod dape-handle-event :after
   (_conn (_event (eql terminated)) _body)
   "Stop verdict when the dape session terminates."
-  (when (eq verdict--run-state 'running)
+  (when (verdict-running-p)
     (verdict-stop)))
 
 (provide 'verdict-dart)
