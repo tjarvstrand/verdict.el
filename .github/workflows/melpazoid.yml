@@ -1,0 +1,50 @@
+# Melpazoid checks, adapted from the upstream template at
+# https://github.com/riscy/melpazoid/blob/master/melpazoid.yml
+#
+# One job per package via the matrix.  EXIST_OK is true for packages
+# already on MELPA and false for ones still pending publication.
+
+name: melpazoid
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md']
+  pull_request:
+    paths-ignore: ['**.md']
+
+jobs:
+  melpazoid:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: verdict
+            recipe: '(verdict :fetcher github :repo "tjarvstrand/verdict.el" :files (:defaults))'
+            exist_ok: true
+          - package: verdict-dart
+            recipe: '(verdict-dart :fetcher github :repo "tjarvstrand/verdict.el" :files (:defaults))'
+            exist_ok: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Emacs and clone melpazoid
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y emacs
+          emacs --version
+          git clone https://github.com/riscy/melpazoid.git ~/melpazoid
+
+      - name: Run melpazoid for ${{ matrix.package }}
+        env:
+          LOCAL_REPO: ${{ github.workspace }}/packages/${{ matrix.package }}
+          RECIPE: ${{ matrix.recipe }}
+          WARN_IS_ERROR: false
+          EXIST_OK: ${{ matrix.exist_ok }}
+        run: make -C ~/melpazoid
