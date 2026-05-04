@@ -262,7 +262,8 @@ Useful for debugging backend implementations."
 Most recently registered first.
 PREDICATE is one of:
   - a major-mode symbol — matched with `derived-mode-p'
-  - a regexp string — matched against `buffer-name'
+  - a regexp string — matched against `buffer-file-name' if the buffer
+    is visiting a file, else against `buffer-name'
   - a function — called with no args; non-nil means match
 BACKEND-PLIST keys:
   :context-fn — (scope) -> context plist.
@@ -279,10 +280,12 @@ BACKEND-PLIST keys:
   :line-handler — (line) called per output line.")
 
 (defun verdict--match-predicate (predicate)
-  "Return non-nil if PREDICATE matches the current buffer."
+  "Return non-nil if PREDICATE matches the current buffer.
+For regexp predicates, match against `buffer-file-name' when the buffer
+visits a file."
   (cond
    ((symbolp predicate)   (derived-mode-p predicate))
-   ((stringp predicate)   (string-match-p predicate (buffer-name)))
+   ((stringp predicate)   (string-match-p predicate (or buffer-file-name (buffer-name))))
    ((functionp predicate) (funcall predicate))
    (t (error "Invalid verdict backend predicate: %S" predicate))))
 

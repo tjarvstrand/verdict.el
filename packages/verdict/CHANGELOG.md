@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
  - Hidden statuses no longer distort the displayed aggregate of group nodes; the stored aggregate is used regardless of which child statuses are visible.
+ - Match backend regex predicates against buffer-file-name instead of buffer-name
 
 ## [0.1.2] - 2026-04-13
 

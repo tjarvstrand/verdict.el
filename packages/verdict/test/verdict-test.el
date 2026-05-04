@@ -139,6 +139,35 @@
     (verdict-register-backend 'dart-ts-mode #'ignore #'ignore #'ignore)
     (expect (caar verdict--backends) :to-be 'dart-ts-mode)))
 
+;;; verdict--match-predicate
+
+(describe "verdict--match-predicate"
+  (it "matches a regexp against buffer-file-name when the buffer is file-backed"
+    (with-temp-buffer
+      (setq buffer-file-name "/tmp/foo.dart")
+      (rename-buffer "foo.dart<2>" t)
+      (expect (verdict--match-predicate "\\.dart\\'") :not :to-be nil)))
+
+  (it "falls back to buffer-name when the buffer has no file"
+    (with-temp-buffer
+      (rename-buffer "*scratch-dart*" t)
+      (expect (verdict--match-predicate "scratch-dart") :not :to-be nil)))
+
+  (it "returns nil when neither file nor name matches"
+    (with-temp-buffer
+      (setq buffer-file-name "/tmp/foo.txt")
+      (expect (verdict--match-predicate "\\.dart\\'") :to-be nil)))
+
+  (it "dispatches major-mode predicates via derived-mode-p"
+    (with-temp-buffer
+      (text-mode)
+      (expect (verdict--match-predicate 'text-mode) :not :to-be nil)
+      (expect (verdict--match-predicate 'prog-mode) :to-be nil)))
+
+  (it "dispatches function predicates"
+    (expect (verdict--match-predicate (lambda () t))   :not :to-be nil)
+    (expect (verdict--match-predicate (lambda () nil)) :to-be nil)))
+
 ;;; verdict-reset
 
 (describe "verdict-reset"
