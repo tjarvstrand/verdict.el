@@ -1,6 +1,7 @@
 ;;; verdict-dart.el --- Dart runner for verdict -*- lexical-binding: t -*-
 
 ;; Author: Thomas Järvstrand <https://github.com/tjarvstrand>
+;; Assisted-by: Claude:claude-opus-4-7
 ;; Maintainer: Thomas Järvstrand <https://github.com/tjarvstrand>
 ;; Version: 0.1.3
 ;; URL: https://github.com/tjarvstrand/verdict.el
