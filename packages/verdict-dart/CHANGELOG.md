@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-05-05
+
 ## [0.1.3] - 2026-05-04
 
 ### Added
@@ -44,7 +46,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
  - Initial release
 
-[Unreleased]: https://github.com/tjarvstrand/verdict/compare/verdict-dart-v0.1.3...HEAD
+[Unreleased]: https://github.com/tjarvstrand/verdict/compare/verdict-dart-v0.1.4...HEAD
+[0.1.4]: https://github.com/tjarvstrand/verdict/compare/verdict-dart-v0.1.3...verdict-dart-v0.1.4
 [0.1.3]: https://github.com/tjarvstrand/verdict/compare/verdict-dart-v0.1.2...verdict-dart-v0.1.3
 [0.1.2]: https://github.com/tjarvstrand/verdict/compare/verdict-dart-v0.1.1...verdict-dart-v0.1.2
 [0.1.1]: https://github.com/tjarvstrand/verdict/compare/verdict-dart-v0.1.0...verdict-dart-v0.1.1
