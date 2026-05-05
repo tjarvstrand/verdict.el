@@ -777,16 +777,18 @@ PARENT-ID is a node id; never `:root' (root refreshes go through the
 full-render fallback because the variadic top-level button is
 invisible and cannot be reached by `treemacs-find-visible-node').
 
-Mutates the cached `:item.:children' on the parent button so that the
-treemacs `:children' form sees freshly-built child plists when it
-re-expands.  Builds the parent's full plist via `verdict--build-tree'
-so synthetic `<init>' children and aggregate status are included."
+Replaces the cached `:item' on the parent button with a freshly-built
+copy so that the treemacs `:children' form sees freshly-built child
+plists when it re-expands.  Replacing rather than mutating is required:
+when a group was previously rendered with no children yet,
+`verdict--build-tree' returns it by reference (catch-all branch), so
+the cached `:item' aliases the entry in `verdict--nodes' and any
+mutation to it would corrupt the canonical children-id list."
   (-when-let* ((path (verdict--node-path parent-id))
                (dom  (treemacs-find-in-dom path))
                (btn  (treemacs-dom-node->position dom))
                (built (car (verdict--build-tree (list parent-id)))))
-    (let ((stale-item (treemacs-button-get btn :item)))
-      (plist-put stale-item :children (plist-get built :children)))
+    (treemacs-button-put btn :item built)
     (save-excursion
       (goto-char btn)
       (treemacs-do-update-node path))))

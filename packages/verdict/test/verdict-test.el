@@ -1,6 +1,7 @@
 ;;; verdict-test.el --- Buttercup tests for verdict.el -*- lexical-binding: t -*-
 
 (require 'buttercup)
+(require 'cl-lib)
 (require 'verdict)
 
 ;;; Helpers
@@ -458,6 +459,40 @@
     (expect (mapcar (lambda (n) (plist-get n :label))
                     (verdict--build-tree '("a" "b" "c")))
             :to-equal '("A" "B" "C"))))
+
+;;; verdict--refresh-subtree-of
+
+(describe "verdict--refresh-subtree-of"
+  (before-each (verdict-test--reset))
+
+  (it "does not corrupt verdict--nodes when the cached :item aliases the canonical node"
+    ;; Regresses a bug where the cached `:item' on a treemacs button could
+    ;; be the same plist as the entry in `verdict--nodes' — this happens
+    ;; whenever `verdict--build-tree' returns a node via its catch-all
+    ;; branch (e.g. a group rendered before any children arrived).  An
+    ;; older implementation `plist-put's the rebuilt `:children' onto the
+    ;; cached `:item', which then mutated the canonical node and replaced
+    ;; the child-id strings with built plists — breaking later
+    ;; `gethash'-based lookups in `verdict--group-status'.
+    ;;
+    ;; treemacs's `define-inline' helpers (`treemacs-find-in-dom',
+    ;; `treemacs-button-get', `treemacs-button-put',
+    ;; `treemacs-do-update-node') get inlined at load time, so they
+    ;; can't be replaced with `cl-letf' or `spy-on'.  Set up a real
+    ;; buffer with a `treemacs-dom' entry and a button instead.
+    (verdict-test--node "g1" :label "Group" :status 'running
+                        :children '("t1") :parent-id nil)
+    (verdict-test--node "t1" :label "Test"  :status 'running :parent-id "g1")
+    (with-temp-buffer
+      (setq-local treemacs-dom (make-hash-table :test 'equal))
+      (insert-text-button "g1" :item (gethash "g1" verdict--nodes))
+      (puthash (list "verdict-root" "g1")
+               (treemacs-dom-node->create! :key (list "verdict-root" "g1")
+                                           :position (point-min))
+               treemacs-dom)
+      (verdict--refresh-subtree-of "g1"))
+    (expect (plist-get (gethash "g1" verdict--nodes) :children)
+            :to-equal '("t1"))))
 
 ;;; verdict-stop
 
