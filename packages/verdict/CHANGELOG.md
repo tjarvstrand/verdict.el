@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+ - Fix `args-out-of-range` errors during incremental render when a stale dom marker for a filtered-out path had advanced to `point-max`.
+
 ## [0.1.4] - 2026-05-05
 
 ### Fixed

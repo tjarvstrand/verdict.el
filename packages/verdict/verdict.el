@@ -783,11 +783,21 @@ plists when it re-expands.  Replacing rather than mutating is required:
 when a group was previously rendered with no children yet,
 `verdict--build-tree' returns it by reference (catch-all branch), so
 the cached `:item' aliases the entry in `verdict--nodes' and any
-mutation to it would corrupt the canonical children-id list."
-  (-when-let* ((path (verdict--node-path parent-id))
-               (dom  (treemacs-find-in-dom path))
-               (btn  (treemacs-dom-node->position dom))
-               (built (car (verdict--build-tree (list parent-id)))))
+mutation to it would corrupt the canonical children-id list.
+
+Skips stale dom entries — those whose marker is at or past
+`point-max', or no longer points to a treemacs button.  Stale entries
+arise when `verdict--render-full' erases the buffer: markers in dom
+nodes have insertion-type t, advance with the re-rendered content,
+and end up at `point-max' for paths that aren't re-rendered (e.g.
+filtered out by hidden statuses).  Using such a marker would crash
+`treemacs-button-put'."
+  (when-let* ((path (verdict--node-path parent-id))
+              (dom  (treemacs-find-in-dom path))
+              (btn  (treemacs-dom-node->position dom))
+              ((< btn (point-max)))
+              ((eq (get-text-property btn 'category) 'treemacs-button))
+              (built (car (verdict--build-tree (list parent-id)))))
     (treemacs-button-put btn :item built)
     (save-excursion
       (goto-char btn)

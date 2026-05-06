@@ -492,7 +492,30 @@
                treemacs-dom)
       (verdict--refresh-subtree-of "g1"))
     (expect (plist-get (gethash "g1" verdict--nodes) :children)
-            :to-equal '("t1"))))
+            :to-equal '("t1")))
+
+  (it "skips dom entries with stale positions instead of crashing"
+    ;; Regresses an `(args-out-of-range N N)' crash: after a
+    ;; `verdict--render-full', `treemacs-dom' retains stale entries
+    ;; for filtered-out paths whose markers may have advanced to
+    ;; `point-max' (because they have insertion-type t and were in
+    ;; the erased region).  `treemacs-button-put' then crashes on
+    ;; `(previous-single-property-change (1+ btn) 'button)' because
+    ;; `(1+ point-max)' is past the buffer.
+    (verdict-test--node "g1" :label "Group" :status 'running
+                        :children '("t1") :parent-id nil)
+    (verdict-test--node "t1" :label "Test"  :status 'running :parent-id "g1")
+    (with-temp-buffer
+      (setq-local treemacs-dom (make-hash-table :test 'equal))
+      (insert "no buttons here")
+      ;; Stale dom entry: marker advances to `point-max' just like in
+      ;; the real bug scenario (insertion-type t, content erased).
+      (let ((stale (copy-marker (point-max) t)))
+        (puthash (list "verdict-root" "g1")
+                 (treemacs-dom-node->create! :key (list "verdict-root" "g1")
+                                             :position stale)
+                 treemacs-dom))
+      (expect (verdict--refresh-subtree-of "g1") :not :to-throw))))
 
 ;;; verdict-stop
 
